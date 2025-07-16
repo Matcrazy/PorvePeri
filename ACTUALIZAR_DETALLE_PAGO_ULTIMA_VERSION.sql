@@ -1,0 +1,96 @@
+
+CREATE OR REPLACE PROCEDURE ACTUALIZAR_DETALLE_PAGO(
+    IN_ASIENTO          IN NUMBER, 
+    IN_CONSECUTIVO_PAGO IN NUMBER,
+    IN_USUARIO          IN VARCHAR2,
+    IN_ESTADO_SAAP      IN NUMBER,
+    IN_CXC_ID           IN MPENGES.SPG_CUENTA_POR_COBRAR.CUENTA_POR_COBRAR_ID%TYPE,
+    IN_DETALLE_PAGO     IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+    IN_PAGO_ID          IN MPENGES.SPG_PAGO.PAGO_ID%TYPE,
+    IN_PAGADOR          IN VARCHAR2)
+IS
+    l_error             VARCHAR2(2000);
+    l_sysdate_detalle   DATE;
+
+    -- Tipos para BULK COLLECT
+    TYPE t_detalle_ids_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.DETALLE_PAGO_ID%TYPE INDEX BY PLS_INTEGER;
+    TYPE t_scn_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.MFONDOS_SCN%TYPE INDEX BY PLS_INTEGER;
+
+    l_detalle_ids       t_detalle_ids_tab;
+    l_scn_values        t_scn_tab;
+BEGIN
+    l_sysdate_detalle := SYSDATE;
+
+    IF (IN_PAGO_ID IS NULL AND IN_DETALLE_PAGO.DETALLE_PAGO_ID IS NOT NULL) THEN
+        -- Actualiza un único registro de detalle
+        UPDATE MPENGES.SPG_DETALLE_PAGO DP
+        SET DP.ESTADO_SAAP = IN_ESTADO_SAAP,
+            DP.ESTADO = C_ESTADO_PAGO_PAGADO,
+            DP.CONSECUTIVO_PAGO = IN_CONSECUTIVO_PAGO,
+            DP.NUMERO_ASIENTO_ID = IN_ASIENTO,
+            DP.CUENTA_POR_COBRAR_ID = IN_CXC_ID,
+            DP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+            DP.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+            DP.MFONDOS_SCN = DP.MFONDOS_SCN + 1
+        WHERE DP.DETALLE_PAGO_ID = IN_DETALLE_PAGO.DETALLE_PAGO_ID;
+
+        -- Estado autorizado para la preliquidación
+        UPDATE MNOMPEN.NOMP_PRELIQUIDACION_PAGO PRE
+        SET PRE.ESTADO_PRELIQUIDACION = C_PRE_ESTADO_AUTORIZADO
+        WHERE PRE.PAGO_ID = IN_DETALLE_PAGO.PAGO_ID;
+
+        -- Estado del pago dependiendo del pagador
+        IF IN_PAGADOR = C_PARAMETRO_FONDO THEN
+            UPDATE MPENGES.SPG_PAGO P
+            SET P.ESTADO_COMISION = 'PENDIENTE_EJECUTAR',
+                P.ESTADO_CCM_ENVIO = 'PENDIENTE_EJECUTAR',
+                P.ESTADO_COMPROBANTE_NOMINA = 'PENDIENTE',
+                P.FECHA_PAGO = l_sysdate_detalle,
+                P.USUARIO_ULTIMA_MODFICACION = IN_USUARIO,
+                P.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+                P.MFONDOS_SCN = P.MFONDOS_SCN + 1
+            WHERE P.PAGO_ID = IN_DETALLE_PAGO.PAGO_ID;
+        ELSE
+            UPDATE MPENGES.SPG_PAGO P
+            SET P.ESTADO_CCM_ENVIO = 'PENDIENTE_EJECUTAR',
+                P.ESTADO_COMPROBANTE_NOMINA = 'PENDIENTE',
+                P.USUARIO_ULTIMA_MODFICACION = IN_USUARIO,
+                P.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+                P.MFONDOS_SCN = P.MFONDOS_SCN + 1
+            WHERE P.PAGO_ID = IN_DETALLE_PAGO.PAGO_ID;
+        END IF;
+    ELSE
+        -- BULK COLLECT: trae los registros de detalle con tipo de pago programado
+        SELECT P.DETALLE_PAGO_ID, P.MFONDOS_SCN
+        BULK COLLECT INTO l_detalle_ids, l_scn_values
+        FROM MPENGES.SPG_DETALLE_PAGO P
+        JOIN MPENGES.SPG_OPERACION_CONCEPTO C ON P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+        WHERE C.TIPO_PAGO_ID = C_COD_OPER_RET_PROGRAMADO
+          AND P.PAGO_ID = IN_PAGO_ID
+        ORDER BY P.OPERACION_CONCEPTO_ID ASC;
+
+        -- FORALL para aplicar actualización por lote
+        FORALL i IN INDICES OF l_detalle_ids
+            UPDATE MPENGES.SPG_DETALLE_PAGO DP
+            SET DP.ESTADO = C_ESTADO_ERROR,
+                DP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+                DP.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+                DP.MFONDOS_SCN = l_scn_values(i) + 1
+            WHERE DP.DETALLE_PAGO_ID = l_detalle_ids(i);
+
+        -- Actualización de la preliquidación a estado de error
+        UPDATE MNOMPEN.NOMP_PRELIQUIDACION_PAGO PRE
+        SET PRE.ESTADO_PRELIQUIDACION = C_PRE_ESTADO_ERROR_LIQ,
+            PRE.USUARIO_ULTIMA_MODIFICACION = USER,
+            PRE.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle
+        WHERE PRE.PAGO_ID = IN_PAGO_ID;
+    END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        l_error := 'PAGO_ID [' || IN_DETALLE_PAGO.PAGO_ID || '], ' ||
+                   'DETALLE_PAGO_ID [' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || '], ' ||
+                   '[ERROR_ACTUALIZANDO_DETALLE_PAGO]  - Error[' || SQLERRM ||
+                   '] Traza[' || DBMS_UTILITY.FORMAT_ERROR_BACKTRACE || ']';
+        RAISE_APPLICATION_ERROR(-20001, l_error);
+END ACTUALIZAR_DETALLE_PAGO;
