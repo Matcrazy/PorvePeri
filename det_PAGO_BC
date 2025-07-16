@@ -39,4 +39,25 @@ EXCEPTION
 END;
 /
 
- 
+---------------------------------------------------------------------------------------------------------
+
+DECLARE
+
+    TYPE t_detalle_ids_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.DETALLE_PAGO_ID%TYPE INDEX BY PLS_INTEGER;
+    TYPE t_scn_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.MFONDOS_SCN%TYPE INDEX BY PLS_INTEGER;
+  
+    l_detalle_ids   t_detalle_ids_tab;
+    l_scn_values    t_scn_tab;
+            
+BEGIN 
+        
+    SELECT P.DETALLE_PAGO_ID, P.MFONDOS_SCN
+    BULK COLLECT INTO l_detalle_ids, l_scn_values
+    FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C, MPENGES.Spg_Pago pg
+    WHERE P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+    AND C.TIPO_PAGO_ID= 'RETIRO_PROGRAMADO'
+    AND P.PAGO_ID = pg.pago_id
+    ORDER BY P.OPERACION_CONCEPTO_ID ASC;
+
+END;
+
