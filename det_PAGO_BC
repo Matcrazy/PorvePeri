@@ -1,0 +1,42 @@
+DECLARE
+    -- Parámetros de entrada simulados
+    IN_PAGO_ID   NUMBER := 45678;       -- 🔁 Reemplaza con un ID de pago real
+    IN_USUARIO   VARCHAR2(100) := 'USR_TEST'; -- 🔁 Usuario responsable
+    l_sysdate_detalle DATE := SYSDATE;
+
+    -- Tipos para colecciones
+    TYPE t_detalle_ids_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.DETALLE_PAGO_ID%TYPE INDEX BY PLS_INTEGER;
+    TYPE t_scn_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.MFONDOS_SCN%TYPE INDEX BY PLS_INTEGER;
+
+    -- Variables para BULK COLLECT
+    l_detalle_ids   t_detalle_ids_tab;
+    l_scn_values    t_scn_tab;
+BEGIN
+    -- BULK COLLECT para cargar los registros a actualizar
+    SELECT P.DETALLE_PAGO_ID, P.MFONDOS_SCN
+    BULK COLLECT INTO l_detalle_ids, l_scn_values
+    FROM MPENGES.SPG_DETALLE_PAGO P
+    JOIN MPENGES.SPG_OPERACION_CONCEPTO C
+      ON P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+    WHERE C.TIPO_PAGO_ID = C_COD_OPER_RET_PROGRAMADO
+      AND P.PAGO_ID = IN_PAGO_ID
+    ORDER BY P.OPERACION_CONCEPTO_ID ASC;
+
+    -- Actualización por lote
+    FORALL i IN INDICES OF l_detalle_ids
+        UPDATE MPENGES.SPG_DETALLE_PAGO DP
+        SET DP.ESTADO = C_ESTADO_ERROR,
+            DP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+            DP.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+            DP.MFONDOS_SCN = l_scn_values(i) + 1
+        WHERE DP.DETALLE_PAGO_ID = l_detalle_ids(i);
+
+    DBMS_OUTPUT.PUT_LINE('✅ Actualización masiva completada con BULK COLLECT + FORALL.');
+
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('❌ Error: ' || SQLERRM);
+END;
+/
+
+ 
