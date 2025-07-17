@@ -1,0 +1,113 @@
+DECLARE 
+
+l_tipoIdentificacion   VARCHAR2(5);
+l_numeroIdentificacion VARCHAR2(15);
+
+l_global_pago_id       mpenges.spg_detalle_pago.pago_id%type;
+l_reg_pago             MPENGES.SPG_PAGO%ROWTYPE;
+l_reg_detalle_pago     mpenges.spg_detalle_pago%ROWTYPE;
+
+     
+CURSOR OBTENER_DETALLE_PAGO (P_PAGO_ID IN NUMBER)
+   IS
+      SELECT P.DETALLE_PAGO_ID
+            , P.PAGO_ID
+            , P.OPERACION_CONCEPTO_ID
+            , P.VALOR_PESOS
+            , P.AFECTA_PAGO
+            , P.BENEFICIARIO_ID
+            , P.MEDIO_PAGO
+            , P.BANCO_ID
+            , P.TIPO_CUENTA
+            , P.CUENTA_BANCARIA
+            , P.OFICINA_PORVENIR_ID
+            , P.ESTADO
+            , P.ESTADO_SAAP
+            , P.CONSECUTIVO_PAGO
+            , P.ID_FACTURA
+            , P.FECHA_CREACION
+            , P.USUARIO_CREACION
+            , P.FECHA_ULTIMA_MODIFICACION
+            , P.USUARIO_ULTIMA_MODIFICACION
+            , P.ESTADO_ERP_ID
+            , P.NUMERO_ASIENTO_ID
+            , P.PERSONA_PAGO
+            , P.DESCUENTO_ADICIONAL_ID
+            , P.MODALIDAD_GIRO
+            , P.NUM_CHEQUE
+            , P.NUM_AUTORIZACION
+            , P.CUENTA_POR_COBRAR_ID
+            , P.PERIODO
+            , P.NUM_PAG_SEGURIDAD_SOCIAL
+            , P.MFONDOS_SCN
+            FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C
+            WHERE P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+            AND C.TIPO_PAGO_ID= 'RETIRO_PROGRAMADO'
+            AND P.PAGO_ID = 4488007
+            ORDER BY P.OPERACION_CONCEPTO_ID ASC; 
+            
+    TYPE t_detalle_pago_tab IS TABLE OF OBTENER_DETALLE_PAGO%ROWTYPE;
+    l_detalle_pago_tab t_detalle_pago_tab;
+
+    
+
+BEGIN
+  
+          -- BULK COLLECT para reemplazo de cursor
+    OPEN OBTENER_DETALLE_PAGO(l_reg_pago.pago_id);
+    FETCH OBTENER_DETALLE_PAGO BULK COLLECT INTO l_detalle_pago_tab;
+    CLOSE OBTENER_DETALLE_PAGO;   
+
+
+    FOR i IN 1 .. l_detalle_pago_tab.COUNT LOOP
+        CUR_DETALLE_PAGO := l_detalle_pago_tab(i);
+
+            -- OBTIENE EL REGISTRO DE DETALLE DE PAGO
+              l_reg_detalle_pago.DETALLE_PAGO_ID := CUR_DETALLE_PAGO.DETALLE_PAGO_ID            ;
+              l_reg_detalle_pago.PAGO_ID := CUR_DETALLE_PAGO.PAGO_ID                    ;
+              l_reg_detalle_pago.OPERACION_CONCEPTO_ID := CUR_DETALLE_PAGO.OPERACION_CONCEPTO_ID      ;
+              l_reg_detalle_pago.VALOR_PESOS := CUR_DETALLE_PAGO.VALOR_PESOS                ;
+              l_reg_detalle_pago.AFECTA_PAGO := CUR_DETALLE_PAGO.AFECTA_PAGO                ;
+              l_reg_detalle_pago.BENEFICIARIO_ID := CUR_DETALLE_PAGO.BENEFICIARIO_ID            ;
+              l_reg_detalle_pago.MEDIO_PAGO := CUR_DETALLE_PAGO.MEDIO_PAGO                 ;
+              l_reg_detalle_pago.BANCO_ID := CUR_DETALLE_PAGO.BANCO_ID                   ;
+              l_reg_detalle_pago.TIPO_CUENTA := CUR_DETALLE_PAGO.TIPO_CUENTA                ;
+              l_reg_detalle_pago.CUENTA_BANCARIA := CUR_DETALLE_PAGO.CUENTA_BANCARIA            ;
+              l_reg_detalle_pago.OFICINA_PORVENIR_ID := CUR_DETALLE_PAGO.OFICINA_PORVENIR_ID        ;
+              l_reg_detalle_pago.ESTADO := CUR_DETALLE_PAGO.ESTADO                     ;
+              l_reg_detalle_pago.ESTADO_SAAP := CUR_DETALLE_PAGO.ESTADO_SAAP                ;
+              l_reg_detalle_pago.CONSECUTIVO_PAGO := CUR_DETALLE_PAGO.CONSECUTIVO_PAGO           ;
+              l_reg_detalle_pago.ID_FACTURA := CUR_DETALLE_PAGO.ID_FACTURA                 ;
+              l_reg_detalle_pago.FECHA_CREACION := CUR_DETALLE_PAGO.FECHA_CREACION             ;
+              l_reg_detalle_pago.USUARIO_CREACION := CUR_DETALLE_PAGO.USUARIO_CREACION           ;
+              l_reg_detalle_pago.FECHA_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.FECHA_ULTIMA_MODIFICACION  ;
+              l_reg_detalle_pago.USUARIO_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.USUARIO_ULTIMA_MODIFICACION;
+              l_reg_detalle_pago.ESTADO_ERP_ID := CUR_DETALLE_PAGO.ESTADO_ERP_ID              ;
+              l_reg_detalle_pago.NUMERO_ASIENTO_ID := CUR_DETALLE_PAGO.NUMERO_ASIENTO_ID          ;
+              l_reg_detalle_pago.PERSONA_PAGO := CUR_DETALLE_PAGO.PERSONA_PAGO               ;
+              l_reg_detalle_pago.DESCUENTO_ADICIONAL_ID := CUR_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID     ;
+              l_reg_detalle_pago.MODALIDAD_GIRO := CUR_DETALLE_PAGO.MODALIDAD_GIRO             ;
+              l_reg_detalle_pago.NUM_CHEQUE := CUR_DETALLE_PAGO.NUM_CHEQUE                 ;
+              l_reg_detalle_pago.NUM_AUTORIZACION := CUR_DETALLE_PAGO.NUM_AUTORIZACION           ;
+              l_reg_detalle_pago.CUENTA_POR_COBRAR_ID := CUR_DETALLE_PAGO.CUENTA_POR_COBRAR_ID       ;
+              l_reg_detalle_pago.PERIODO := CUR_DETALLE_PAGO.PERIODO                    ;
+              l_reg_detalle_pago.NUM_PAG_SEGURIDAD_SOCIAL := CUR_DETALLE_PAGO.NUM_PAG_SEGURIDAD_SOCIAL   ;
+              l_reg_detalle_pago.MFONDOS_SCN := CUR_DETALLE_PAGO.MFONDOS_SCN  ;
+
+              l_global_pago_id := CUR_DETALLE_PAGO.PAGO_ID;
+
+      BEGIN
+            SELECT  per.numero_identificacion,
+                (select ti.abreviatura from mgeneral.gen_tipo_identificacion ti where ti.tipo_identificacion_id=per.tipo_identificacion)
+                 INTO l_numeroIdentificacion, l_tipoIdentificacion
+                 FROM mpenges.spg_persona per
+                 WHERE per.persona_id= l_reg_detalle_pago.Persona_Pago
+                 AND rownum=1  ;
+                 EXCEPTION
+                 WHEN OTHERS THEN
+
+                       l_numeroIdentificacion := 900147233;
+                       l_tipoIdentificacion   := 'NIT';
+      END;
+      END LOOP;
+END;
