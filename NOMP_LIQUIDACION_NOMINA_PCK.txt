@@ -1,0 +1,3684 @@
+create or replace package body         NOMP_LIQUIDACION_NOMINA_PCK is
+
+  C_MODULO_PENS_GESTION CONSTANT NUMBER(10) DEFAULT 2400;
+  C_FONDO_PENSION_OBLIG CONSTANT NUMBER(2) DEFAULT 1;
+  C_FONDO_SOCIEDAD      CONSTANT NUMBER(2) DEFAULT 5;
+  C_INVERSION_UNO       CONSTANT NUMBER(2) DEFAULT 1;
+  C_INVERSION_DOS       CONSTANT NUMBER(2) DEFAULT 2;
+  C_INVERSION_TRES      CONSTANT NUMBER(2) DEFAULT 3;
+  C_INVERSION_CUATRO    CONSTANT NUMBER(2) DEFAULT 4;
+  C_PARAMETRO_FONDO     CONSTANT VARCHAR2(20) DEFAULT 'NIT_FONDO';
+  C_PARAMETRO_SOCIEDAD  CONSTANT VARCHAR2(20) DEFAULT 'NIT_SOCIEDAD';
+  C_PARAMETRO_NIT_FSP   CONSTANT VARCHAR2(20) DEFAULT 'NIT_SOL';
+  C_PARAMETRO_NOMBRE_FSP   CONSTANT VARCHAR2(20) DEFAULT 'NOMBRE_SOL';
+  C_PAGADOR_FONDO       CONSTANT VARCHAR2(20) DEFAULT 'FONDO';
+  C_PAGADOR_SOCIEDAD    CONSTANT VARCHAR2(20) DEFAULT 'SOCIEDAD';
+
+  C_OPER_CONCEPTO_RET_PROGRAMADO CONSTANT VARCHAR2(20) DEFAULT 'RETIRO_PROGRAMADO';
+  C_OPER_CONCEPTO_EPS CONSTANT VARCHAR2(20) DEFAULT 'EPS';
+  C_OPER_CONCEPTO_FSP CONSTANT VARCHAR2(20) DEFAULT 'FSP';
+  C_OPER_CONCEPTO_CAJA CONSTANT VARCHAR2(20) DEFAULT 'CAJA';
+  C_OPER_CONCEPTO_AFP CONSTANT VARCHAR2(20) DEFAULT 'APORTE_PENSION';
+  C_OPER_CONCEPTO_MES_ADICIONAL CONSTANT VARCHAR2(20) DEFAULT 'MESADA_ADICIONAL';
+  C_OPER_CONCEPTO_COMISION_ADM  CONSTANT VARCHAR2(20) DEFAULT 'COMISION_ADM';
+  C_OPER_CONCEPTO_DESC_ADICIONAL CONSTANT VARCHAR2(20) DEFAULT 'DESCUENTO_ADICIONAL';
+  C_OPER_CONCEPTO_CAJA_APORT_VOL CONSTANT VARCHAR2(40) DEFAULT 'CAJA_APORTE_VOLUNTARIO';
+  C_OPER_CONCEPTO_DEV_BONO  CONSTANT VARCHAR2(20) DEFAULT 'DEV_BONO';
+  C_OPER_CONCEPTO_SALUD_UPC CONSTANT VARCHAR2(20) DEFAULT 'SALUD_UPC';
+  C_OPER_CONCEPTO_COT_CAJA    CONSTANT VARCHAR2(20) DEFAULT 'COTIZACION_CAJA';
+  C_OPER_CONCEPTO_RETEFUENTE  CONSTANT VARCHAR2(20) DEFAULT 'RETEFUENTE';
+
+  C_TOC_CAUSACION_BENEFICIOS  CONSTANT VARCHAR2(20) DEFAULT 'CAUBEN';
+
+  C_COD_OPER_RET_PROGRAMADO  CONSTANT VARCHAR2(20) DEFAULT 'RETIRO_PROGRAMADO';
+  C_COD_OPER_PAG_PROVISIONAL CONSTANT VARCHAR2(20) DEFAULT 'PAGO_PROVISIONAL';
+  C_COD_OPER_RP_ORDEN_JUDICIAL  CONSTANT VARCHAR2(20) DEFAULT 'RETIRO_PROGRAM_ORJU';
+
+  C_CONCEPTO_VE_RET_PROGRAMADO CONSTANT VARCHAR2(20) DEFAULT 'VEMP';
+  C_CONCEPTO_VA_RET_PROGRAMADO CONSTANT VARCHAR2(20) DEFAULT 'VAFI';
+  C_CONCEPTO_OBLI_RET_PROGRAMADO CONSTANT VARCHAR2(20) DEFAULT 'OBLI';
+  C_CONCEPTO_VE_FSP CONSTANT VARCHAR2(20) DEFAULT 'BSVE';
+  C_CONCEPTO_VA_FSP CONSTANT VARCHAR2(20) DEFAULT 'BSVA';
+  C_CONCEPTO_OBLI_FSP CONSTANT VARCHAR2(20) DEFAULT 'BSOL';
+  C_CONCEPTO_VE_EPS CONSTANT VARCHAR2(20) DEFAULT 'EPSE';
+  C_CONCEPTO_VA_EPS CONSTANT VARCHAR2(20) DEFAULT 'EPSA';
+  C_CONCEPTO_OBLI_EPS CONSTANT VARCHAR2(20) DEFAULT 'EPS';
+  C_CONCEPTO_VE_CAJA CONSTANT VARCHAR2(20) DEFAULT 'CCFE';
+  C_CONCEPTO_VA_CAJA CONSTANT VARCHAR2(20) DEFAULT 'CCFA';
+  C_CONCEPTO_OBLI_CAJA CONSTANT VARCHAR2(20) DEFAULT 'CCF';
+  C_CONCEPTO_VE_AFP CONSTANT VARCHAR2(20) DEFAULT 'CVEM';
+  C_CONCEPTO_VA_AFP CONSTANT VARCHAR2(20) DEFAULT 'CVAF';
+  C_CONCEPTO_OBLI_AFP CONSTANT VARCHAR2(20) DEFAULT 'COBL';
+
+  C_CAJA_PAGO_VAFI_DEFECTO CONSTANT NUMBER(2) DEFAULT 18;
+  C_CAJA_PAGO_VEMP_DEFECTO CONSTANT NUMBER(2) DEFAULT 8;
+  C_CAJA_PAGO_RFOB_DEFECTO CONSTANT NUMBER(2) DEFAULT 21;
+
+  C_NOMBRE_ENT_APORT_LINEA CONSTANT VARCHAR2(20) DEFAULT 'APORTES EN LÍNEA';
+  C_NIT_ENT_APORT_LINEA    CONSTANT NUMBER(10) DEFAULT 900147233;
+
+  C_ESTADO_PEND_SAAP   CONSTANT NUMBER(1) DEFAULT 1;
+  C_ESTADO_PAGO_PAGADO CONSTANT VARCHAR2(10) DEFAULT 'PAGADO';
+  C_ESTADO_ERROR CONSTANT VARCHAR2(10) DEFAULT 'ERROR';
+  C_PRE_ESTADO_ERROR_LIQ   CONSTANT  VARCHAR2(30) DEFAULT 'ERROR_LIQUIDACION';
+  C_PRE_ESTADO_AUTORIZADO  CONSTANT  VARCHAR2(30) DEFAULT 'AUTORIZADO';
+
+  c_conf_actulizacion_documento  CONSTANT  VARCHAR2(100)  := 'ACTUALIZAR_DOCUMENTO_IDENTIDAD'; --58
+  c_conf_medio_pago_invalido     CONSTANT  VARCHAR2(100)  := 'MEDIO DE PAGO INVALIDO'; --59
+  c_conf_certificado_estudios    CONSTANT  VARCHAR2(100)  := 'PENDIENTE CERTIFICADO ESTUDIO'; --76
+  c_conf_cta_bancaria_no_cert    CONSTANT  VARCHAR2(100)  := 'CUENTA BANCARIA NO CERTIFICADA'; --77
+  c_conf_cert_supervivencia      CONSTANT  VARCHAR2(100)  := 'CERTIFICADO DE SUPERVIVENCIA RESIDENTE EN EL EXTERIOR'; --78
+
+  l_tipoIdentificacion   VARCHAR2(5);
+  l_numeroIdentificacion VARCHAR2(15);
+  l_nombrePersona        VARCHAR2(300);
+  l_nitFsp               NUMBER(20) := 0;
+  l_nombreFsp            VARCHAR2(200):= ' ';
+  l_nitEps               NUMBER(20) := 0;
+  l_nombreEps            VARCHAR2(200) := ' ';
+  l_nitCaja              NUMBER(20) := 0;
+  l_nombreCaja           VARCHAR2(200) := ' ';
+  l_nitFondo             NUMBER(20);
+  l_nitSociedad          NUMBER(20);
+
+  l_sentencia_mes          VARCHAR2(200) := 'select extract(month from sysdate) from dual';
+  l_sentencia_cons_cta_mov VARCHAR2(200) :='SELECT mcuentas.CTA_CUENTA_MOVIMIENTO_SEQ.nextval FROM dual';
+  l_sentencia_cons_pago    VARCHAR2(200) :='SELECT MCUENTAS.CTA_CONSECUTIVO_PAGO_SEQ.NEXTVAL FROM DUAL';
+  l_sentencia_asiento_id   VARCHAR2(200) :='SELECT MCONTABILIDAD.CON_ENCABEZADO_ASIENTO_SEQ.NEXTVAL FROM DUAL';
+
+  vtT_DebitoAporteTOArreglo     MCUENTAS.CTA_CUENTAAFILIADO_PCK.DESET;
+  vtT_DebitoAporteTO            MCUENTAS.CTA_CUENTAAFILIADO_PCK.T_DEBITOAPORTETO;
+  l_global_pago_id                mpenges.spg_detalle_pago.pago_id%type;
+  g_valorUnidadInversion          MGENERAL.GEN_VALOR_UNIDAD.VALOR_UNIDAD%TYPE;
+
+  FUNCTION OBTENER_VALOR_GEN_PARAMETRO (IN_FONDO_ID IN NUMBER,
+                                        IN_MODULO_ID IN VARCHAR2,
+                                        IN_ABREVIATURA IN VARCHAR2)
+  RETURN MGENERAL.GEN_PARAMETRO.VALOR%TYPE IS
+   l_valor MGENERAL.GEN_PARAMETRO.VALOR%TYPE;
+  BEGIN
+   SELECT G.VALOR INTO l_valor
+   FROM MGENERAL.GEN_PARAMETRO G
+   WHERE G.FONDO_ID = IN_FONDO_ID
+   AND G.MODULO_ID = IN_MODULO_ID
+   AND G.ABREVIATURA = IN_ABREVIATURA;
+   RETURN (l_valor);
+  EXCEPTION WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('ERROR, NO EXISTE EL REGISTRO EN GEN_PARAMETRO DE LA ABREVIATURA = '||IN_ABREVIATURA);
+  END;
+
+
+  FUNCTION OBTENER_MES_ACTUAL RETURN VARCHAR2 IS
+    l_mes       VARCHAR2(15);
+    l_mesDigito NUMBER;
+  BEGIN
+
+     EXECUTE IMMEDIATE l_sentencia_mes INTO l_mesDigito;
+
+     IF(l_mesDigito IS NOT NULL)
+     THEN
+         IF (l_mesDigito = 1) THEN
+           l_mes := 'ENERO';
+         ELSIF (l_mesDigito = 2) THEN
+           l_mes := 'FEBRERO';
+         ELSIF (l_mesDigito = 3) THEN
+           l_mes := 'MARZO';
+         ELSIF (l_mesDigito = 4) THEN
+           l_mes := 'ABRIL';
+         ELSIF (l_mesDigito = 5) THEN
+           l_mes := 'MAYO';
+         ELSIF (l_mesDigito = 6) THEN
+           l_mes := 'JUNIO';
+         ELSIF (l_mesDigito = 7) THEN
+           l_mes := 'JULIO';
+         ELSIF (l_mesDigito = 8) THEN
+           l_mes := 'AGOSTO';
+         ELSIF (l_mesDigito = 9) THEN
+           l_mes := 'SEPTIEMBRE';
+         ELSIF (l_mesDigito = 10) THEN
+           l_mes := 'OCTUBRE';
+         ELSIF (l_mesDigito = 11) THEN
+           l_mes := 'NOVIEMBRE';
+         ELSIF (l_mesDigito = 12) THEN
+           l_mes := 'DICIEMBRE';
+         END IF;
+     END IF;
+    RETURN l_mes;
+  END;
+
+  FUNCTION HASHTABLE_CONTABILIDAD (IN_CTA_SALDO_PORTAFOLIO IN mcuentas.cta_saldo_portafolio%ROWTYPE,
+                                  IN_REG_CUENTA_MOV_BASE  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  IN_REG_CUENTA_MOV_VAFI  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  IN_REG_CUENTA_MOV_VEMP  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  IN_REG_CUENTA_MOV_OBLI  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  IN_PERSONA_ID           IN mpenges.spg_detalle_pago.persona_pago%TYPE,
+                                  IN_CONCEPTO_PAGO        IN VARCHAR2)
+  RETURN MCONTABILIDAD.HASH_TABLE IS
+     htTablaValores MCONTABILIDAD.HASH_TABLE;
+     l_inversion1 NUMBER(2) :=0;
+     l_obli1 NUMBER :=0;
+     l_vafi1 NUMBER :=0;
+     l_vemp1 NUMBER :=0;
+     l_inversion2 NUMBER(2) :=0;
+     l_obli2 NUMBER :=0;
+     l_vafi2 NUMBER :=0;
+     l_vemp2 NUMBER :=0;
+     l_inversion3 NUMBER(2) :=0;
+     l_obli3 NUMBER :=0;
+     l_vafi3 NUMBER :=0;
+     l_vemp3 NUMBER :=0;
+     l_inversion4 NUMBER(2) :=0;
+     l_obli4 NUMBER :=0;
+     l_vafi4 NUMBER :=0;
+     l_vemp4 NUMBER :=0;
+     --Retiro Programado
+     l_ret_obli1 NUMBER :=0;
+     l_ret_vafi1 NUMBER :=0;
+     l_ret_vemp1 NUMBER :=0;
+     l_ret_obli2 NUMBER :=0;
+     l_ret_vafi2 NUMBER :=0;
+     l_ret_vemp2 NUMBER :=0;
+     l_ret_obli3 NUMBER :=0;
+     l_ret_vafi3 NUMBER :=0;
+     l_ret_vemp3 NUMBER :=0;
+     l_ret_obli4 NUMBER :=0;
+     l_ret_vafi4 NUMBER :=0;
+     l_ret_vemp4 NUMBER :=0;
+     --FSP
+     l_valfspob1 NUMBER :=0;
+     l_valfspva1 NUMBER :=0;
+     l_valfspve1 NUMBER :=0;
+     l_valfspob2 NUMBER :=0;
+     l_valfspva2 NUMBER :=0;
+     l_valfspve2 NUMBER :=0;
+     l_valfspob3 NUMBER :=0;
+     l_valfspva3 NUMBER :=0;
+     l_valfspve3 NUMBER :=0;
+     l_valfspob4 NUMBER :=0;
+     l_valfspva4 NUMBER :=0;
+     l_valfspve4 NUMBER :=0;
+
+     --EPS
+     l_valsalob1 NUMBER :=0;
+     l_valsalva1 NUMBER :=0;
+     l_valsalve1 NUMBER :=0;
+     l_valsalob2 NUMBER :=0;
+     l_valsalva2 NUMBER :=0;
+     l_valsalve2 NUMBER :=0;
+     l_valsalob3 NUMBER :=0;
+     l_valsalva3 NUMBER :=0;
+     l_valsalve3 NUMBER :=0;
+     l_valsalob4 NUMBER :=0;
+     l_valsalva4 NUMBER :=0;
+     l_valsalve4 NUMBER :=0;
+     l_pagsal1_4 NUMBER :=0;
+     --CAJA
+     l_valccfob1 NUMBER :=0;
+     l_valccfva1 NUMBER :=0;
+     l_valccfve1 NUMBER :=0;
+     l_valccfob2 NUMBER :=0;
+     l_valccfva2 NUMBER :=0;
+     l_valccfve2 NUMBER :=0;
+     l_valccfob3 NUMBER :=0;
+     l_valccfva3 NUMBER :=0;
+     l_valccfve3 NUMBER :=0;
+     l_valccfob4 NUMBER :=0;
+     l_valccfva4 NUMBER :=0;
+     l_valccfve4 NUMBER :=0;
+     --AFP
+     l_valafpob1 NUMBER :=0;
+     l_valafpva1 NUMBER :=0;
+     l_valafpve1 NUMBER :=0;
+     l_valafpob2 NUMBER :=0;
+     l_valafpva2 NUMBER :=0;
+     l_valafpve2 NUMBER :=0;
+     l_valafpob3 NUMBER :=0;
+     l_valafpva3 NUMBER :=0;
+     l_valafpve3 NUMBER :=0;
+     l_valafpob4 NUMBER :=0;
+     l_valafpva4 NUMBER :=0;
+     l_valafpve4 NUMBER :=0;
+  BEGIN
+
+     BEGIN
+         SELECT  per.numero_identificacion,
+         (select ti.abreviatura from mgeneral.gen_tipo_identificacion ti where ti.tipo_identificacion_id=per.tipo_identificacion)
+         INTO l_numeroIdentificacion, l_tipoIdentificacion
+         FROM mpenges.spg_persona per
+         WHERE per.persona_id=IN_PERSONA_ID
+         AND rownum=1  ;
+     EXCEPTION
+      WHEN OTHERS THEN
+        NULL;
+     END;
+
+    l_nombrePersona := mpenges.spg_utilidades_persona_pck.obtener_nombres_ben2_fn(NULL, IN_PERSONA_ID,1);
+    l_pagsal1_4 := l_global_pago_id;
+
+            IF IN_CTA_SALDO_PORTAFOLIO.INVERSION_ID = C_INVERSION_UNO THEN
+                 l_inversion1:=1;
+
+                 IF IN_REG_CUENTA_MOV_OBLI.valor_pesos is not null and IN_REG_CUENTA_MOV_OBLI.valor_pesos <> 0 THEN
+                  l_obli1:=IN_REG_CUENTA_MOV_OBLI.valor_pesos ;
+                 ELSE
+                  l_obli1:=0;
+                 END IF;
+
+
+                 IF IN_REG_CUENTA_MOV_VAFI.valor_pesos is not null and IN_REG_CUENTA_MOV_VAFI.valor_pesos <>0  THEN
+                   l_vafi1:=IN_REG_CUENTA_MOV_VAFI.valor_pesos;
+                 ELSE
+                   l_vafi1:=0;
+                 END IF;
+
+
+                 IF IN_REG_CUENTA_MOV_VEMP.valor_pesos is not null and IN_REG_CUENTA_MOV_VEMP.valor_pesos <> 0  THEN
+                  l_vemp1:=IN_REG_CUENTA_MOV_VEMP.valor_pesos;
+                 ELSE
+                  l_vemp1:=0;
+                 END IF;
+
+            ELSE
+               l_inversion1:=0;
+               l_obli1:=0;
+               l_vafi1:=0;
+               l_vemp1:=0;
+            END IF;
+
+
+            IF IN_CTA_SALDO_PORTAFOLIO.INVERSION_ID = C_INVERSION_DOS THEN
+
+             l_inversion2:=2;
+             IF IN_REG_CUENTA_MOV_OBLI.valor_pesos is not null and IN_REG_CUENTA_MOV_OBLI.valor_pesos <> 0 THEN
+              l_obli2:=IN_REG_CUENTA_MOV_OBLI.valor_pesos ;
+             ELSE
+              l_obli2:=0;
+
+             END IF;
+
+             IF IN_REG_CUENTA_MOV_VAFI.valor_pesos is not null and IN_REG_CUENTA_MOV_VAFI.valor_pesos <>0  THEN
+               l_vafi2:=IN_REG_CUENTA_MOV_VAFI.valor_pesos;
+             ELSE
+               l_vafi2:=0;
+             END IF;
+
+
+             IF IN_REG_CUENTA_MOV_VEMP.valor_pesos is not null and IN_REG_CUENTA_MOV_VEMP.valor_pesos <> 0  THEN
+              l_vemp2:=IN_REG_CUENTA_MOV_VEMP.valor_pesos;
+             ELSE
+              l_vemp2:=0;
+             END IF;
+
+           ELSE
+             l_inversion2:=0;
+             l_obli2:=0;
+             l_vafi2:=0;
+             l_vemp2:=0;
+         END IF;
+
+
+        IF IN_CTA_SALDO_PORTAFOLIO.INVERSION_ID = C_INVERSION_TRES THEN
+
+           l_inversion3:=3;
+
+           IF IN_REG_CUENTA_MOV_OBLI.valor_pesos is not null and IN_REG_CUENTA_MOV_OBLI.valor_pesos <> 0 THEN
+            l_obli3:=IN_REG_CUENTA_MOV_OBLI.valor_pesos ;
+           ELSE
+            l_obli3:=0;
+           END IF;
+
+
+           IF IN_REG_CUENTA_MOV_VAFI.valor_pesos is not null and IN_REG_CUENTA_MOV_VAFI.valor_pesos <>0  THEN
+             l_vafi3:=IN_REG_CUENTA_MOV_VAFI.valor_pesos;
+           ELSE
+             l_vafi3:=0;
+           END IF;
+
+
+           IF IN_REG_CUENTA_MOV_VEMP.valor_pesos is not null and IN_REG_CUENTA_MOV_VEMP.valor_pesos <> 0  THEN
+            l_vemp3:=IN_REG_CUENTA_MOV_VEMP.valor_pesos;
+           ELSE
+            l_vemp3:=0;
+           END IF;
+
+       ELSE
+         l_inversion3:=0;
+         l_obli3:=0;
+         l_vafi3:=0;
+         l_vemp3:=0;
+       END IF;
+
+       IF IN_CTA_SALDO_PORTAFOLIO.INVERSION_ID = C_INVERSION_CUATRO THEN
+
+             l_inversion4:=4;
+
+             IF IN_REG_CUENTA_MOV_OBLI.valor_pesos is not null and IN_REG_CUENTA_MOV_OBLI.valor_pesos <> 0 THEN
+              l_obli4:=IN_REG_CUENTA_MOV_OBLI.valor_pesos ;
+             ELSE
+              l_obli4:=0;
+             END IF;
+
+             IF IN_REG_CUENTA_MOV_VAFI.valor_pesos is not null and IN_REG_CUENTA_MOV_VAFI.valor_pesos <>0  THEN
+               l_vafi4:=IN_REG_CUENTA_MOV_VAFI.valor_pesos;
+             ELSE
+               l_vafi4:=0;
+             END IF;
+
+             IF IN_REG_CUENTA_MOV_VEMP.valor_pesos is not null and IN_REG_CUENTA_MOV_VEMP.valor_pesos <> 0  THEN
+              l_vemp4:=IN_REG_CUENTA_MOV_VEMP.valor_pesos;
+             ELSE
+              l_vemp4:=0;
+             END IF;
+       ELSE
+         l_inversion4:=0;
+         l_obli4:=0;
+         l_vafi4:=0;
+         l_vemp4:=0;
+       END IF;
+     IF(IN_CONCEPTO_PAGO = C_OPER_CONCEPTO_RET_PROGRAMADO)
+     THEN
+
+           l_ret_obli1 := l_obli1;
+           l_ret_obli2 := l_obli2;
+           l_ret_obli3 := l_obli3;
+           l_ret_obli4 := l_obli4;
+           l_ret_vafi1 := l_vafi1;
+           l_ret_vafi2 := l_vafi2;
+           l_ret_vafi3 := l_vafi3;
+           l_ret_vafi4 := l_vafi4;
+           l_ret_vemp1 := l_vemp1;
+           l_ret_vemp2 := l_vemp2;
+           l_ret_vemp3 := l_vemp3;
+           l_ret_vemp4 := l_vemp4;
+
+     ELSIF (IN_CONCEPTO_PAGO = C_OPER_CONCEPTO_FSP ) THEN
+
+           l_valfspob1 := l_obli1;
+           l_valfspob2 := l_obli2;
+           l_valfspob3 := l_obli3;
+           l_valfspob4 := l_obli4;
+           l_valfspva1 := l_vafi1;
+           l_valfspva2 := l_vafi2;
+           l_valfspva3 := l_vafi3;
+           l_valfspva4 := l_vafi4;
+           l_valfspve1 := l_vemp1;
+           l_valfspve2 := l_vemp2;
+           l_valfspve3 := l_vemp3;
+           l_valfspve4 := l_vemp4;
+
+           l_nombrePersona := C_NOMBRE_ENT_APORT_LINEA;
+
+     ELSIF(IN_CONCEPTO_PAGO = C_OPER_CONCEPTO_EPS) THEN
+
+           l_valsalob1 := l_obli1;
+           l_valsalob2 := l_obli2;
+           l_valsalob3 := l_obli3;
+           l_valsalob4 := l_obli4;
+           l_valsalva1 := l_vafi1;
+           l_valsalva2 := l_vafi2;
+           l_valsalva3 := l_vafi3;
+           l_valsalva4 := l_vafi4;
+           l_valsalve1 := l_vemp1;
+           l_valsalve2 := l_vemp2;
+           l_valsalve3 := l_vemp3;
+           l_valsalve4 := l_vemp4;
+
+           l_nombrePersona := C_NOMBRE_ENT_APORT_LINEA;
+
+     ELSIF(IN_CONCEPTO_PAGO = C_OPER_CONCEPTO_CAJA) THEN
+
+           l_valccfob1 := l_obli1;
+           l_valccfob2 := l_obli2;
+           l_valccfob3 := l_obli3;
+           l_valccfob4 := l_obli4;
+           l_valccfva1 := l_vafi1;
+           l_valccfva2 := l_vafi2;
+           l_valccfva3 := l_vafi3;
+           l_valccfva4 := l_vafi4;
+           l_valccfve1 := l_vemp1;
+           l_valccfve2 := l_vemp2;
+           l_valccfve3 := l_vemp3;
+           l_valccfve4 := l_vemp4;
+           l_nombrePersona := C_NOMBRE_ENT_APORT_LINEA;
+
+     ELSIF(IN_CONCEPTO_PAGO = C_OPER_CONCEPTO_AFP) THEN
+
+           l_valafpob1 := l_obli1;
+           l_valafpob2 := l_obli2;
+           l_valafpob3 := l_obli3;
+           l_valafpob4 := l_obli4;
+           l_valafpva1 := l_vafi1;
+           l_valafpva2 := l_vafi2;
+           l_valafpva3 := l_vafi3;
+           l_valafpva4 := l_vafi4;
+           l_valafpve1 := l_vemp1;
+           l_valafpve2 := l_vemp2;
+           l_valafpve3 := l_vemp3;
+           l_valafpve4 := l_vemp4;
+           l_nombrePersona := C_NOMBRE_ENT_APORT_LINEA;
+
+     END IF;
+
+             htTablaValores :=   MCONTABILIDAD.HASH_TABLE(MCONTABILIDAD.map_entry(key=>'CASO',value=>'0'),
+                                                    MCONTABILIDAD.map_entry(key=>'CTAORIG',value=>IN_REG_CUENTA_MOV_BASE.cuenta_id),
+                                                    MCONTABILIDAD.map_entry(key=>'FONDOORIGEN',value=>C_FONDO_PENSION_OBLIG),
+                                                    MCONTABILIDAD.map_entry(key=>'TERCERO',value=>l_numeroIdentificacion),
+                                                    MCONTABILIDAD.map_entry(key=>'NOMTERCERO',value=>l_nombrePersona),
+                                                    MCONTABILIDAD.map_entry(key=>'MESNOMINA',value=>OBTENER_MES_ACTUAL),
+                                                    MCONTABILIDAD.map_entry(key=>'NITSAF',value=>l_nitSociedad),
+                                                    MCONTABILIDAD.map_entry(key=>'NITFSP',value=>l_nitFsp),
+                                                    MCONTABILIDAD.map_entry(key=>'NOMFSP',value=>l_nombreFsp),
+                                                    MCONTABILIDAD.map_entry(key=>'NITEPS',value=>l_nitEps),
+                                                    MCONTABILIDAD.map_entry(key=>'NOMEPS',value=>l_nombreEps),
+                                                    MCONTABILIDAD.map_entry(key=>'NITCCF',value=>l_nitCaja),
+                                                    MCONTABILIDAD.map_entry(key=>'NOMCCF',value=>l_nombreCaja),
+                                                    MCONTABILIDAD.map_entry(key=>'NITAEL',value=>C_NIT_ENT_APORT_LINEA),
+                                                    MCONTABILIDAD.map_entry(key=>'NOMAEL',value=>C_NOMBRE_ENT_APORT_LINEA),
+                                                    MCONTABILIDAD.map_entry(key=>'INVERSION1',value=>l_inversion1),
+                                                    MCONTABILIDAD.map_entry(key=>'OBLI1',value=>l_ret_obli1),
+                                                    MCONTABILIDAD.map_entry(key=>'VAFI1',value=>l_ret_vafi1),
+                                                    MCONTABILIDAD.map_entry(key=>'VEMP1',value=>l_ret_vemp1),
+                                                    MCONTABILIDAD.map_entry(key=>'INVERSION2',value=>l_inversion2),
+                                                    MCONTABILIDAD.map_entry(key=>'OBLI2',value=>l_ret_obli2),
+                                                    MCONTABILIDAD.map_entry(key=>'VAFI2',value=>l_ret_vafi2),
+                                                    MCONTABILIDAD.map_entry(key=>'VEMP2',value=>l_ret_vemp2),
+                                                    MCONTABILIDAD.map_entry(key=>'INVERSION3',value=>l_inversion3),
+                                                    MCONTABILIDAD.map_entry(key=>'OBLI3',value=>l_ret_obli3),
+                                                    MCONTABILIDAD.map_entry(key=>'VAFI3',value=>l_ret_vafi3),
+                                                    MCONTABILIDAD.map_entry(key=>'VEMP3',value=>l_ret_vemp3),
+                                                    MCONTABILIDAD.map_entry(key=>'INVERSION4',value=>l_inversion4),
+                                                    MCONTABILIDAD.map_entry(key=>'OBLI4',value=>l_ret_obli4),
+                                                    MCONTABILIDAD.map_entry(key=>'VAFI4',value=>l_ret_vafi4),
+                                                    MCONTABILIDAD.map_entry(key=>'VEMP4',value=>l_ret_vemp4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPOB1',value=>l_valfspob1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVA1',value=>l_valfspva1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVE1',value=>l_valfspve1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPOB2',value=>l_valfspob2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVA2',value=>l_valfspva2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVE2',value=>l_valfspve2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPOB3',value=>l_valfspob3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVA3',value=>l_valfspva3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVE3',value=>l_valfspve3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPOB4',value=>l_valfspob4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVA4',value=>l_valfspva4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALFSPVE4',value=>l_valfspve4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALOB1',value=>l_valsalob1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVA1',value=>l_valsalva1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVE1',value=>l_valsalve1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALOB2',value=>l_valsalob2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVA2',value=>l_valsalva2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVE2',value=>l_valsalve2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALOB3',value=>l_valsalob3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVA3',value=>l_valsalva3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVE3',value=>l_valsalve3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALOB4',value=>l_valsalob4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVA4',value=>l_valsalva4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALSALVE4',value=>l_valsalve4),
+                                                    MCONTABILIDAD.map_entry(key=>'PAGSAL1_4',value=>l_pagsal1_4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFOB1',value=>l_valccfob1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVA1',value=>l_valccfva1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVE1',value=>l_valccfve1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFOB2',value=>l_valccfob2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVA2',value=>l_valccfva2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVE2',value=>l_valccfve2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFOB3',value=>l_valccfob3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVA3',value=>l_valccfva3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVE3',value=>l_valccfve3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFOB4',value=>l_valccfob4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVA4',value=>l_valccfva4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCCFVE4',value=>l_valccfve4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPOB1',value=>l_valafpob1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVA1',value=>l_valafpva1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVE1',value=>l_valafpve1),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPOB2',value=>l_valafpob2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVA2',value=>l_valafpva2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVE2',value=>l_valafpve2),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPOB3',value=>l_valafpob3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVA3',value=>l_valafpva3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVE3',value=>l_valafpve3),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPOB4',value=>l_valafpob4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVA4',value=>l_valafpva4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALAFPVE4',value=>l_valafpve4),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMOB1',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVA1',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVE1',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMOB2',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVA2',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVE2',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMOB3',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVA3',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVE3',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMOB4',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVA4',value=>0),
+                                                    MCONTABILIDAD.map_entry(key=>'VALCOMVE4',value=>0));
+
+
+
+     RETURN htTablaValores;
+  END HASHTABLE_CONTABILIDAD;
+
+  PROCEDURE ACTUALIZAR_NUMERO_PAGOS(IN_DETALLE_PAGO    IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+                                    IN_USUARIO         IN VARCHAR2,
+                                    IN_CUENTA_X_PAGAR  IN MPENGES.SPG_CUENTA_POR_PAGAR%ROWTYPE)
+  IS
+    l_descuentoAdicionalId NUMBER;
+    l_numeroPagos          NUMBER := 0;
+    l_error                VARCHAR2(2000);
+    l_sysdate_numero       date;
+
+  BEGIN
+
+    l_sysdate_numero := sysdate;
+
+    IF(IN_DETALLE_PAGO.DETALLE_PAGO_ID IS NOT NULL AND IN_CUENTA_X_PAGAR.CUENTA_POR_PAGAR_ID IS NULL)
+    THEN
+        BEGIN
+             SELECT DA.DESCUENTO_ADICIONAL_ID, DA.PAGOS_REALIZADOS
+             INTO l_descuentoAdicionalId, l_numeroPagos
+             FROM MPENGES.SPG_DESCUENTO_ADICIONAL DA
+             WHERE DA.DESCUENTO_ADICIONAL_ID = IN_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID;
+
+             l_numeroPagos := l_numeroPagos +1;
+
+             UPDATE  MPENGES.SPG_DESCUENTO_ADICIONAL DA
+             SET DA.PAGOS_REALIZADOS = l_numeroPagos,
+                 da.valor_acumulado_pago = (NVL(da.valor_acumulado_pago, 0) + IN_DETALLE_PAGO.Valor_Pesos),
+                 DA.FECHA_ULTIMA_MODIFICACION = l_sysdate_numero,
+                 DA.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO
+             WHERE DA.DESCUENTO_ADICIONAL_ID = l_descuentoAdicionalId;
+
+             UPDATE MPENGES.SPG_DESCUENTO_ADICIONAL DA
+                SET DA.ESTADO                      = 'INACTIVO',
+                    DA.CAUSAL_INACTIVACION_ID = 'LIMITE_CUANTIA',
+                    DA.FECHA_ULTIMA_MODIFICACION   = l_sysdate_numero,
+                    DA.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO
+              WHERE DA.DESCUENTO_ADICIONAL_ID = L_DESCUENTOADICIONALID
+                AND NVL(DA.VALOR_ACUMULADO_PAGO, 0) >=
+                    DA.VALOR_LIMITE_CUANTIA
+                AND DA.ESTADO = 'ACTIVO';
+
+             UPDATE MPENGES.SPG_DESCUENTO_ADICIONAL DA
+                SET DA.ESTADO                      = 'INACTIVO',
+                    DA.CAUSAL_INACTIVACION_ID = 'FINAL_DESCUENTO',
+                    DA.FECHA_ULTIMA_MODIFICACION   = l_sysdate_numero,
+                    DA.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO
+              WHERE DA.DESCUENTO_ADICIONAL_ID = L_DESCUENTOADICIONALID
+                AND NVL(DA.PAGOS_REALIZADOS, 0) >= DA.PAGOS_AUTORIZADOS
+                AND DA.ESTADO = 'ACTIVO';
+
+        EXCEPTION WHEN OTHERS THEN
+            l_error :=  'PAGO_ID [' ||IN_DETALLE_PAGO.PAGO_ID||'], ' || 'ERROR CONSULTANDO DESCUENTO ADICIONAL ['||IN_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID||'] - Error[' || SQLERRM ||
+                            '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+            RAISE_APPLICATION_ERROR (-20001, l_error);
+        END;
+    ELSE
+          BEGIN
+               l_numeroPagos := NVL(IN_CUENTA_X_PAGAR.PAGOS_REALIZADOS,0) + 1;
+
+               UPDATE  MPENGES.SPG_CUENTA_POR_PAGAR CXP
+               SET CXP.PAGOS_REALIZADOS = l_numeroPagos,
+                   CXP.FECHA_ULTIMO_PAGO = l_sysdate_numero,
+                   CXP.FECHA_ULTIMA_MODIFICACION = l_sysdate_numero,
+                   CXP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO
+               WHERE CXP.CUENTA_POR_PAGAR_ID = IN_CUENTA_X_PAGAR.CUENTA_POR_PAGAR_ID;
+
+
+          EXCEPTION WHEN OTHERS THEN
+              l_error :=  'SOLICITUD_ID [' ||IN_CUENTA_X_PAGAR.Solicitud_Id||'], ' || 'ERROR ACTUALIZANDO CXP ['||IN_CUENTA_X_PAGAR.CUENTA_POR_PAGAR_ID||'] - Error[' || SQLERRM ||
+                              '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+              RAISE_APPLICATION_ERROR (-20001, l_error);
+          END;
+    END IF;
+  END ACTUALIZAR_NUMERO_PAGOS;
+
+
+CREATE OR REPLACE PROCEDURE ACTUALIZAR_DETALLE_PAGO(
+    IN_ASIENTO          IN NUMBER, 
+    IN_CONSECUTIVO_PAGO IN NUMBER,
+    IN_USUARIO          IN VARCHAR2,
+    IN_ESTADO_SAAP      IN NUMBER,
+    IN_CXC_ID           IN MPENGES.SPG_CUENTA_POR_COBRAR.CUENTA_POR_COBRAR_ID%TYPE,
+    IN_DETALLE_PAGO     IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+    IN_PAGO_ID          IN MPENGES.SPG_PAGO.PAGO_ID%TYPE,
+    IN_PAGADOR          IN VARCHAR2)
+IS
+    l_error             VARCHAR2(2000);
+    l_sysdate_detalle   DATE;
+
+    -- Tipos para BULK COLLECT
+    TYPE t_detalle_ids_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.DETALLE_PAGO_ID%TYPE INDEX BY PLS_INTEGER;
+    TYPE t_scn_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.MFONDOS_SCN%TYPE INDEX BY PLS_INTEGER;
+
+    l_detalle_ids       t_detalle_ids_tab;
+    l_scn_values        t_scn_tab;
+BEGIN
+    l_sysdate_detalle := SYSDATE;
+
+    IF (IN_PAGO_ID IS NULL AND IN_DETALLE_PAGO.DETALLE_PAGO_ID IS NOT NULL) THEN
+        -- Actualiza un único registro de detalle
+        UPDATE MPENGES.SPG_DETALLE_PAGO DP
+        SET DP.ESTADO_SAAP = IN_ESTADO_SAAP,
+            DP.ESTADO = C_ESTADO_PAGO_PAGADO,
+            DP.CONSECUTIVO_PAGO = IN_CONSECUTIVO_PAGO,
+            DP.NUMERO_ASIENTO_ID = IN_ASIENTO,
+            DP.CUENTA_POR_COBRAR_ID = IN_CXC_ID,
+            DP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+            DP.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+            DP.MFONDOS_SCN = DP.MFONDOS_SCN + 1
+        WHERE DP.DETALLE_PAGO_ID = IN_DETALLE_PAGO.DETALLE_PAGO_ID;
+
+        -- Estado autorizado para la preliquidación
+        UPDATE MNOMPEN.NOMP_PRELIQUIDACION_PAGO PRE
+        SET PRE.ESTADO_PRELIQUIDACION = C_PRE_ESTADO_AUTORIZADO
+        WHERE PRE.PAGO_ID = IN_DETALLE_PAGO.PAGO_ID;
+
+        -- Estado del pago dependiendo del pagador
+        IF IN_PAGADOR = C_PARAMETRO_FONDO THEN
+            UPDATE MPENGES.SPG_PAGO P
+            SET P.ESTADO_COMISION = 'PENDIENTE_EJECUTAR',
+                P.ESTADO_CCM_ENVIO = 'PENDIENTE_EJECUTAR',
+                P.ESTADO_COMPROBANTE_NOMINA = 'PENDIENTE',
+                P.FECHA_PAGO = l_sysdate_detalle,
+                P.USUARIO_ULTIMA_MODFICACION = IN_USUARIO,
+                P.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+                P.MFONDOS_SCN = P.MFONDOS_SCN + 1
+            WHERE P.PAGO_ID = IN_DETALLE_PAGO.PAGO_ID;
+        ELSE
+            UPDATE MPENGES.SPG_PAGO P
+            SET P.ESTADO_CCM_ENVIO = 'PENDIENTE_EJECUTAR',
+                P.ESTADO_COMPROBANTE_NOMINA = 'PENDIENTE',
+                P.USUARIO_ULTIMA_MODFICACION = IN_USUARIO,
+                P.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+                P.MFONDOS_SCN = P.MFONDOS_SCN + 1
+            WHERE P.PAGO_ID = IN_DETALLE_PAGO.PAGO_ID;
+        END IF;
+    ELSE
+        -- BULK COLLECT: trae los registros de detalle con tipo de pago programado
+ 
+		    SELECT P.DETALLE_PAGO_ID, P.MFONDOS_SCN
+    BULK COLLECT INTO l_detalle_ids, l_scn_values
+    FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C
+    WHERE P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+    AND C.TIPO_PAGO_ID = C_COD_OPER_RET_PROGRAMADO
+    AND P.PAGO_ID = IN_PAGO_ID
+    ORDER BY P.OPERACION_CONCEPTO_ID ASC;
+		
+        -- FORALL para aplicar actualización por lote
+        FORALL i IN INDICES OF l_detalle_ids
+            UPDATE MPENGES.SPG_DETALLE_PAGO DP
+            SET DP.ESTADO = C_ESTADO_ERROR,
+                DP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+                DP.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+                DP.MFONDOS_SCN = l_scn_values(i) + 1
+            WHERE DP.DETALLE_PAGO_ID = l_detalle_ids(i);
+				
+
+        -- Actualización de la preliquidación a estado de error
+        UPDATE MNOMPEN.NOMP_PRELIQUIDACION_PAGO PRE
+        SET PRE.ESTADO_PRELIQUIDACION = C_PRE_ESTADO_ERROR_LIQ,
+            PRE.USUARIO_ULTIMA_MODIFICACION = USER,
+            PRE.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle
+        WHERE PRE.PAGO_ID = IN_PAGO_ID;
+    END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        l_error := 'PAGO_ID [' || IN_DETALLE_PAGO.PAGO_ID || '], ' ||
+                   'DETALLE_PAGO_ID [' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || '], ' ||
+                   '[ERROR_ACTUALIZANDO_DETALLE_PAGO]  - Error[' || SQLERRM ||
+                   '] Traza[' || DBMS_UTILITY.FORMAT_ERROR_BACKTRACE || ']';
+        RAISE_APPLICATION_ERROR(-20001, l_error);
+END ACTUALIZAR_DETALLE_PAGO;
+
+
+ PROCEDURE ACTUALIZAR_CXP_ESTADO(in_reg_cxp IN mpenges.spg_cuenta_por_pagar%ROWTYPE, in_estado_cxp VARCHAR2)
+   IS
+   l_sysdate_estado                         date;
+
+ BEGIN
+
+   l_sysdate_estado := sysdate;
+
+   UPDATE mpenges.spg_cuenta_por_pagar cxp
+    SET  cxp.estado_cxp_id       = in_estado_cxp,
+         cxp.valor_pesos         = in_reg_cxp.valor_pesos,
+         cxp.fecha_ultima_modificacion  = l_sysdate_estado,
+         cxp.usuario_ultima_modificacion= USER,
+         cxp.mfondos_scn                = (NVL(in_reg_cxp.mfondos_scn,0)+1)
+    WHERE cxp.cuenta_por_pagar_id=in_reg_cxp.cuenta_por_pagar_id;
+
+ END ACTUALIZAR_CXP_ESTADO;
+
+ PROCEDURE ACTUALIZAR_NOMINA_PENSIONADO(IN_REG_PAGO IN mpenges.spg_pago%ROWTYPE,
+                                        IN_NOMINA_PENSIONADO_ID IN MNOMPEN.NOMP_NOMINA_PENSIONADO.NOMINA_PENSIONADO_ID%TYPE,
+                                        IN_USUARIO IN VARCHAR2)IS
+  l_nominaPensionadoId MNOMPEN.NOMP_NOMINA_PENSIONADO.NOMINA_PENSIONADO_ID%TYPE;
+  l_periodoSig NUMBER;
+  l_fechaPeriodoAct DATE;
+  l_fechaPeriodoSig DATE;
+  l_sysdate_pensionado  date;
+ BEGIN
+   l_nominaPensionadoId := IN_NOMINA_PENSIONADO_ID;
+   l_sysdate_pensionado := sysdate;
+
+  --Calculo del siguiente periodo
+  l_fechaPeriodoAct := TO_DATE(TO_CHAR(IN_REG_PAGO.PERIODO),'YYYYMM');
+  l_fechaPeriodoSig := ADD_MONTHS(l_fechaPeriodoAct, 1);
+  l_periodoSig := TO_NUMBER(TO_CHAR(l_fechaPeriodoSig,'YYYYMM'));
+
+   UPDATE MNOMPEN.NOMP_NOMINA_PENSIONADO NP
+    SET  NP.ULTIMO_PERIODO_PAGADO = IN_REG_PAGO.PERIODO,
+         NP.PROXIMO_PERIODO_PAGAR = l_periodoSig,
+         NP.fecha_ultima_modificacion  = l_sysdate_pensionado,
+         NP.usuario_ultima_modificacion= USER
+   WHERE NP.NOMINA_PENSIONADO_ID = l_nominaPensionadoId;
+
+ END ACTUALIZAR_NOMINA_PENSIONADO;
+
+  PROCEDURE INSERTA_ERROR( porigen           VARCHAR2,
+                            ppagoloteid       NUMERIC,
+                            pcuentaporpagarid NUMERIC,
+                            error             VARCHAR2
+                          ) IS
+  l_sysdate_error date;
+
+  BEGIN
+
+    l_sysdate_error := sysdate;
+
+    INSERT INTO mpenges.spg_error_pago (
+    error_pago_id,
+    origen_error,
+    pago_lote_id,
+    cuenta_por_pagar_id,
+    error,
+    fecha_creacion,
+    usuario_creacion,
+    fecha_ultima_modificacion,
+    usuario_ultima_modificacion,
+    mfondos_scn
+    )
+    VALUES
+      (mpenges.spg_error_pago_seq.nextval,
+       porigen,
+       ppagoloteid,
+       pcuentaporpagarid,
+       error,
+       l_sysdate_error,
+       USER,
+       NULL,
+       NULL,
+       0);
+
+  END INSERTA_ERROR;
+
+  PROCEDURE INSERTA_CONTABILIDAD_CXC(IN_CXC_ID           IN MPENGES.SPG_CUENTA_POR_COBRAR.CUENTA_POR_COBRAR_ID%TYPE,
+                                     IN_ASIENTO          IN NUMBER,
+                                     IN_TIPO_BENEFICIO   IN VARCHAR2,
+                                     IN_IDCXC            IN VARCHAR2,
+                                     IN_USUARIO          IN VARCHAR2  ) IS
+
+  l_sysdate_cxc date;
+
+  BEGIN
+
+    l_sysdate_cxc := sysdate;
+
+    INSERT INTO MPENGES.SPG_CONTABILIDAD_CXC(CUENTA_POR_COBRAR_ID        ,
+                                            NUMERO_ASIENTO_ID           ,
+                                            TIPO_OPERACION              ,
+                                            TIPO_BENEFICIO              ,
+                                            CLAVE_CONTABLE_ID           ,
+                                            DESC_ASIENTO                ,
+                                            INTERFAZ_ID                 ,
+                                            USUARIO_CREACION            ,
+                                            FECHA_CREACION              ,
+                                            USUARIO_ULTIMA_MODIFICACION ,
+                                            FECHA_ULTIMA_MODIFICACION   ,
+                                            MFONDOS_SCN          )
+                                     VALUES(IN_CXC_ID,
+                                            IN_ASIENTO,
+                                            C_TOC_CAUSACION_BENEFICIOS,
+                                            IN_TIPO_BENEFICIO,
+                                            NULL,
+                                            IN_IDCXC,
+                                            NULL,
+                                            IN_USUARIO,
+                                            l_sysdate_cxc,
+                                            NULL,
+                                            NULL,
+                                            0);
+
+  END INSERTA_CONTABILIDAD_CXC;
+
+  PROCEDURE PAGOS_SUSPENDIDOS (IN_REG_CUENTA_POR_PAGAR IN MPENGES.SPG_CUENTA_POR_PAGAR%ROWTYPE,
+                               IN_REG_PAGO             IN MPENGES.SPG_PAGO%ROWTYPE,
+                               IN_DETALLE_PAGO         IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+                               IN_USUARIO              IN VARCHAR2)
+  IS
+   BEGIN
+
+       MPENGES.spg_control_certificados_pck.crear_pago_suspendido(
+                                                                   IN_REG_CUENTA_POR_PAGAR.cuenta_por_pagar_id,
+                                                                   'LIQUIDACION_NOMINA',
+                                                                   IN_REG_PAGO.periodo,
+                                                                   IN_DETALLE_PAGO.VALOR_PESOS
+                                                                 );
+
+  END;
+
+
+  PROCEDURE GENERAR_MOV_RET_PROGRAMADO(IN_CTA_MOVIMIENTO_BASE  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                      --IN_CTA_SALDO_PORTAFOLIO IN MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE,
+                                      IN_SOLICITUD            IN MPENGES.SPG_SOLICITUD%ROWTYPE,
+                                      IN_DETALLE_PAGO         IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+                                      IN_VALOR_UNIDAD_INV     IN MGENERAL.GEN_VALOR_UNIDAD.VALOR_UNIDAD%TYPE,
+                                      IN_OPERACION_CONCEPTO   IN mpenges.spg_operacion_concepto%ROWTYPE,
+                                      IN_USUARIO              IN VARCHAR2,
+                                      IN_ASIENTO_CONTABLE     IN  NUMBER,
+                                      OUT_COD_ERROR           OUT NUMBER,
+                                      OUT_MENSAJE_ERROR       OUT VARCHAR2)
+  IS
+    l_reg_cuenta_mov_vafi mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_vemp mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_obli mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_cuenta_movimiento_id mcuentas.cta_cuenta_movimiento.cuenta_movimiento_id%type;
+    l_reg_saldo_portafolio  MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE;
+    l_valorPagoUnidades   NUMBER(18,8);
+    l_indice_cuenta       NUMBER(5);
+    l_asiento_contable_id NUMBER(20);
+
+    l_error       VARCHAR2(2000);
+    l_resultado_contabilidad  VARCHAR2(2000);
+    htTablaValores MCONTABILIDAD.HASH_TABLE;
+  BEGIN
+      OUT_COD_ERROR := 0;
+      vtT_DebitoAporteTOArreglo := MCUENTAS.CTA_CUENTAAFILIADO_PCK.DESET();
+      vtT_DebitoAporteTOArreglo.DELETE;
+      l_indice_cuenta:=1;
+
+      --OBTENER ID DEL ASIENTO CONTABLE Y CONSECUTIVO DE PAGO
+      /*IF(IN_OPERACION_CONCEPTO.operacion_concepto_id NOT IN (C_OPER_CONCEPTO_RET_PROGRAMADO)) THEN
+          BEGIN
+            EXECUTE IMMEDIATE l_sentencia_cons_pago INTO l_consecutivo_pago_id;
+            EXECUTE IMMEDIATE l_sentencia_asiento_id INTO l_asiento_contable_id;
+
+            l_reg_cuenta_mov_vafi.Consecutivo_Pago := l_consecutivo_pago_id;
+            l_reg_cuenta_mov_vafi.Numero_Asiento_Id := l_asiento_contable_id;
+            l_reg_cuenta_mov_vemp.Consecutivo_Pago := l_consecutivo_pago_id;
+            l_reg_cuenta_mov_vemp.Numero_Asiento_Id := l_asiento_contable_id;
+            l_reg_cuenta_mov_obli.Consecutivo_Pago := l_consecutivo_pago_id;
+            l_reg_cuenta_mov_obli.Numero_Asiento_Id := l_asiento_contable_id;
+          EXCEPTION
+            WHEN OTHERS THEN
+
+             l_error :=  'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '[OBTENIENDO_ASIENTO_CONSECUTIVO_PAGO] Error[' || SQLERRM ||
+             '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+             RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          END;
+      ELSE
+          l_asiento_contable_id := IN_ASIENTO_CONTABLE;
+      END IF;*/
+
+       BEGIN
+        SELECT
+              SP.SALDO_PORTAFOLIO_ID,
+              SP.CUENTA_ID,
+              SP.FONDO_ID,
+              SP.INVERSION_ID,
+              SP.SALDO_OBLIGATORIO,
+              SP.SALDO_VOL_AFILIADO,
+              SP.SALDO_VOL_EMPLEADOR,
+              SP.FECHA_CREACION,
+              SP.USUARIO_CREACION,
+              SP.FECHA_ULTIMA_MODIFICACION,
+              SP.USUARIO_ULTIMA_MODIFICACION,
+              SP.MFONDOS_SCN,
+              SP.RETENCION_CONTINGENTE
+         INTO  l_reg_saldo_portafolio.SALDO_PORTAFOLIO_ID,
+               l_reg_saldo_portafolio.CUENTA_ID,
+               l_reg_saldo_portafolio.FONDO_ID,
+               l_reg_saldo_portafolio.INVERSION_ID,
+               l_reg_saldo_portafolio.SALDO_OBLIGATORIO,
+               l_reg_saldo_portafolio.SALDO_VOL_AFILIADO,
+               l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR,
+               l_reg_saldo_portafolio.FECHA_CREACION,
+               l_reg_saldo_portafolio.USUARIO_CREACION,
+               l_reg_saldo_portafolio.FECHA_ULTIMA_MODIFICACION,
+               l_reg_saldo_portafolio.USUARIO_ULTIMA_MODIFICACION,
+               l_reg_saldo_portafolio.MFONDOS_SCN,
+               l_reg_saldo_portafolio.RETENCION_CONTINGENTE
+       FROM   MCUENTAS.CTA_SALDO_PORTAFOLIO SP,
+              MCUENTAS.CTA_CUENTA_DISPERSION CD
+       WHERE  SP.CUENTA_ID = CD.CUENTA_ID
+       AND    SP.INVERSION_ID = CD.INVERSION_ID
+       AND    CD.ESTADO = 'ACTIVO'
+       AND    CD.CUENTA_ID = IN_SOLICITUD.cuenta_afiliado;
+
+     EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+         l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', NO SE ENCONTRARON PORTAFOLIOS ACTIVOS ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+      WHEN TOO_MANY_ROWS THEN
+        l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', EL AFILIADO TIENE MAS DE UN PORTAFOLIO ACTIVO,' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+      WHEN OTHERS THEN
+        l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+      l_asiento_contable_id := IN_ASIENTO_CONTABLE;
+      l_reg_cuenta_mov_vafi := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vafi.concepto_id := C_CONCEPTO_VA_RET_PROGRAMADO;
+      l_reg_cuenta_mov_vafi.caja_pago   := C_CAJA_PAGO_VAFI_DEFECTO;
+      l_reg_cuenta_mov_vafi.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_vemp := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vemp.concepto_id := C_CONCEPTO_VE_RET_PROGRAMADO;
+      l_reg_cuenta_mov_vemp.caja_pago   := C_CAJA_PAGO_VEMP_DEFECTO;
+      l_reg_cuenta_mov_vemp.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_obli := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_obli.concepto_id := C_CONCEPTO_OBLI_RET_PROGRAMADO;
+      l_reg_cuenta_mov_obli.caja_pago   := C_CAJA_PAGO_RFOB_DEFECTO;
+      l_reg_cuenta_mov_obli.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_valorPagoUnidades := IN_DETALLE_PAGO.VALOR_PESOS / IN_VALOR_UNIDAD_INV ;
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS EMPLEADOR
+      IF (l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vemp.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+
+        END IF;
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vemp.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vemp.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vemp.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vemp.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vemp.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vemp.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vemp.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR||'],' || '[DAR_APLICACION_MOVIMIENTO_VEMP] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vemp;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS AFILIADO
+      IF (l_reg_saldo_portafolio.SALDO_VOL_AFILIADO > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vafi.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.saldo_vol_afiliado >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.saldo_vol_afiliado*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_reg_saldo_portafolio.saldo_vol_afiliado;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.saldo_vol_afiliado;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vafi.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vafi.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vafi.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vafi.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vafi.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vafi.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vafi.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_AFILIADO ||'],' || '[DAR_APLICACION_MOVIMIENTO_VAFI] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vafi;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+       END IF;
+
+
+
+      -- APLICAR MOVIMIENTO SALDO DE OBLIGATORIAS
+      IF (l_reg_saldo_portafolio.SALDO_OBLIGATORIO > 0 AND l_valorPagoUnidades > 0) THEN
+         vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_obli.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_OBLIGATORIO >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_OBLIGATORIO*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_obli.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_obli.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_obli.Concepto_Id,
+                                                                     l_reg_cuenta_mov_obli.Fondo_Id,
+                                                                     l_reg_cuenta_mov_obli.Inversion_Id,
+                                                                     l_reg_cuenta_mov_obli.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+            l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_obli.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_OBLIGATORIO||'], ' || '[DAR_APLICACION_MOVIMIENTO_RFOB] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_obli;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+       --SE DEBITA MOVIMIENTO
+       IF OUT_COD_ERROR = 0 AND l_valorPagoUnidades =0 THEN
+
+           MCUENTAS.CTA_CUENTAAFILIADO_PCK.DEBITARMOVIMIENTO_SP(vtT_DebitoAporteTOArreglo,
+                                                                OUT_COD_ERROR,
+                                                                OUT_MENSAJE_ERROR);
+       ELSE
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || 'valorPagoUnidades = ' || ', ' || l_valorPagoUnidades || ', ' || 'SaldoOblPortafolio = ' || ', ' ||  l_reg_saldo_portafolio.SALDO_OBLIGATORIO || ', ' ||
+                      ' Unidades Totales= ' || ', ' || g_valorUnidadInversion || ', ' || '[DEBITA_MOVIMIENTO] Error El Saldo del Afiliado no es Suficiente para Realizar el Pago o [' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+
+      END IF;
+
+      IF OUT_COD_ERROR != 0 THEN
+          l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || 'valorPagoUnidades = ' || ', ' || l_valorPagoUnidades || ', ' || 'SaldoOblPortafolio = ' || ', ' ||  l_reg_saldo_portafolio.SALDO_OBLIGATORIO || ', ' ||
+                      ' Unidades Totales= ' || ', ' || g_valorUnidadInversion || ', ' || '[DEBITA_MOVIMIENTO] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+      ELSE
+         --GENERA CONTABILIDAD
+
+
+               htTablaValores := HASHTABLE_CONTABILIDAD(l_reg_saldo_portafolio,
+                                                       IN_CTA_MOVIMIENTO_BASE,
+                                                       l_reg_cuenta_mov_vafi,
+                                                       l_reg_cuenta_mov_vemp,
+                                                       l_reg_cuenta_mov_obli,
+                                                       IN_DETALLE_PAGO.PERSONA_PAGO,
+                                                       C_OPER_CONCEPTO_RET_PROGRAMADO);
+
+               /*l_resultado_contabilidad:=MCONTABILIDAD.con_contabilizacion_pck.contabilizarasignado(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValores,
+                                                                      l_asiento_contable_id);*/
+                l_resultado_contabilidad:=MCONTABILIDAD.Con_Contabilizacion_Core_Pck.Contabilizacion_Individual(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValores,
+                                                                      l_asiento_contable_id,
+                                                                      'PL/SQL');
+
+
+                OUT_COD_ERROR := TO_NUMBER(SUBSTR(l_resultado_contabilidad, 1, (nvl(instr(l_resultado_contabilidad, '|', 1),0)-1)));
+                OUT_MENSAJE_ERROR := SUBSTR(l_resultado_contabilidad,1,200);
+
+      END IF;
+
+  END GENERAR_MOV_RET_PROGRAMADO;
+
+  PROCEDURE GENERAR_MOVIMIENTO_FSP(IN_CTA_MOVIMIENTO_BASE  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  --IN_CTA_SALDO_PORTAFOLIO IN MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE,
+                                  IN_SOLICITUD            IN MPENGES.SPG_SOLICITUD%ROWTYPE,
+                                  IN_DETALLE_PAGO         IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+                                  IN_VALOR_UNIDAD_INV     IN MGENERAL.GEN_VALOR_UNIDAD.VALOR_UNIDAD%TYPE,
+                                  IN_OPERACION_CONCEPTO   IN mpenges.spg_operacion_concepto%ROWTYPE,
+                                  IN_USUARIO              IN VARCHAR2,
+                                  IN_ASIENTO_CONTABLE     IN  NUMBER,
+                                  OUT_COD_ERROR           OUT NUMBER,
+                                  OUT_MENSAJE_ERROR       OUT VARCHAR2)
+  IS
+    l_reg_cuenta_mov_vafi mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_vemp mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_obli mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_saldo_portafolio  MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE;
+    l_cuenta_movimiento_id mcuentas.cta_cuenta_movimiento.cuenta_movimiento_id%type;
+    l_valorPagoUnidades   NUMBER(18,8);
+    l_indice_cuenta       NUMBER(5);
+
+    l_error       VARCHAR2(2000);
+    l_resultado_contabilidad  VARCHAR2(2000);
+    htTablaValoresFsp MCONTABILIDAD.HASH_TABLE;
+  BEGIN
+      OUT_COD_ERROR := 0;
+      vtT_DebitoAporteTOArreglo := MCUENTAS.CTA_CUENTAAFILIADO_PCK.DESET();
+      vtT_DebitoAporteTOArreglo.DELETE;
+      l_indice_cuenta:=1;
+
+     BEGIN
+          SELECT
+                SP.SALDO_PORTAFOLIO_ID,
+                SP.CUENTA_ID,
+                SP.FONDO_ID,
+                SP.INVERSION_ID,
+                SP.SALDO_OBLIGATORIO,
+                SP.SALDO_VOL_AFILIADO,
+                SP.SALDO_VOL_EMPLEADOR,
+                SP.FECHA_CREACION,
+                SP.USUARIO_CREACION,
+                SP.FECHA_ULTIMA_MODIFICACION,
+                SP.USUARIO_ULTIMA_MODIFICACION,
+                SP.MFONDOS_SCN,
+                SP.RETENCION_CONTINGENTE
+           INTO  l_reg_saldo_portafolio.SALDO_PORTAFOLIO_ID,
+                 l_reg_saldo_portafolio.CUENTA_ID,
+                 l_reg_saldo_portafolio.FONDO_ID,
+                 l_reg_saldo_portafolio.INVERSION_ID,
+                 l_reg_saldo_portafolio.SALDO_OBLIGATORIO,
+                 l_reg_saldo_portafolio.SALDO_VOL_AFILIADO,
+                 l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR,
+                 l_reg_saldo_portafolio.FECHA_CREACION,
+                 l_reg_saldo_portafolio.USUARIO_CREACION,
+                 l_reg_saldo_portafolio.FECHA_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.USUARIO_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.MFONDOS_SCN,
+                 l_reg_saldo_portafolio.RETENCION_CONTINGENTE
+         FROM   MCUENTAS.CTA_SALDO_PORTAFOLIO SP,
+                MCUENTAS.CTA_CUENTA_DISPERSION CD
+         WHERE  SP.CUENTA_ID = CD.CUENTA_ID
+         AND    SP.INVERSION_ID = CD.INVERSION_ID
+         AND    CD.ESTADO = 'ACTIVO'
+         AND    CD.CUENTA_ID = IN_SOLICITUD.cuenta_afiliado;
+
+       EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+           l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', NO SE ENCONTRARON PORTAFOLIOS ACTIVOS ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN TOO_MANY_ROWS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', EL AFILIADO TIENE MAS DE UN PORTAFOLIO ACTIVO,' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN OTHERS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+       END;
+
+      l_reg_cuenta_mov_vafi := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vafi.concepto_id := C_CONCEPTO_VA_FSP;
+      l_reg_cuenta_mov_vafi.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vafi.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_vemp := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vemp.concepto_id := C_CONCEPTO_VE_FSP;
+      l_reg_cuenta_mov_vemp.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vemp.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_obli := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_obli.concepto_id := C_CONCEPTO_OBLI_FSP;
+      l_reg_cuenta_mov_obli.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_obli.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_valorPagoUnidades := IN_DETALLE_PAGO.VALOR_PESOS / IN_VALOR_UNIDAD_INV ;
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS EMPLEADOR
+      IF (l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vemp.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+
+        END IF;
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vemp.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vemp.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vemp.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vemp.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vemp.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vemp.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vemp.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR||'],' || '[DAR_APLICACION_MOVIMIENTO_VE] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vemp;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS AFILIADO
+      IF (l_reg_saldo_portafolio.SALDO_VOL_AFILIADO > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vafi.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.saldo_vol_afiliado >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.saldo_vol_afiliado*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_reg_saldo_portafolio.saldo_vol_afiliado;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.saldo_vol_afiliado;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vafi.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vafi.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vafi.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vafi.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vafi.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vafi.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+            l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vafi.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_AFILIADO||'], ' || '[DAR_APLICACION_MOVIMIENTO_VA] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vafi;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+       END IF;
+
+
+
+      -- APLICAR MOVIMIENTO SALDO DE OBLIGATORIAS
+      IF (l_reg_saldo_portafolio.SALDO_OBLIGATORIO > 0 AND l_valorPagoUnidades > 0) THEN
+         vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_obli.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_OBLIGATORIO >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_OBLIGATORIO*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_obli.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_obli.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_obli.Concepto_Id,
+                                                                     l_reg_cuenta_mov_obli.Fondo_Id,
+                                                                     l_reg_cuenta_mov_obli.Inversion_Id,
+                                                                     l_reg_cuenta_mov_obli.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_obli.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_OBLIGATORIO||'], ' || '[DAR_APLICACION_MOVIMIENTO_VOBLI] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_obli;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+
+      --SE DEBITA MOVIMIENTO
+       IF OUT_COD_ERROR = 0 AND l_valorPagoUnidades =0 THEN
+
+           MCUENTAS.CTA_CUENTAAFILIADO_PCK.DEBITARMOVIMIENTO_SP(vtT_DebitoAporteTOArreglo,
+                                                                OUT_COD_ERROR,
+                                                                OUT_MENSAJE_ERROR);
+       ELSE
+
+         l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error El Saldo del Afiliado no es Suficiente para Realizar el Pago o [' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+
+      END IF;
+
+
+      IF OUT_COD_ERROR != 0 THEN
+          l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error[' || SQLERRM ||
+
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+      ELSE
+         --GENERA CONTABILIDAD
+
+
+               htTablaValoresFsp := HASHTABLE_CONTABILIDAD(l_reg_saldo_portafolio,
+                                                       IN_CTA_MOVIMIENTO_BASE,
+                                                       l_reg_cuenta_mov_vafi,
+                                                       l_reg_cuenta_mov_vemp,
+                                                       l_reg_cuenta_mov_obli,
+                                                       IN_DETALLE_PAGO.PERSONA_PAGO,
+                                                       C_OPER_CONCEPTO_FSP);
+
+               /*l_resultado_contabilidad:=MCONTABILIDAD.con_contabilizacion_pck.contabilizarasignado(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresFsp,
+                                                                      IN_ASIENTO_CONTABLE);*/
+                l_resultado_contabilidad:=MCONTABILIDAD.Con_Contabilizacion_Core_Pck.Contabilizacion_Individual(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresFsp,
+                                                                      IN_ASIENTO_CONTABLE,
+                                                                      'PL/SQL');
+
+
+                OUT_COD_ERROR := TO_NUMBER(SUBSTR(l_resultado_contabilidad, 1, (nvl(instr(l_resultado_contabilidad, '|', 1),0)-1)));
+                OUT_MENSAJE_ERROR := SUBSTR(l_resultado_contabilidad,1,200);
+
+      END IF;
+
+  END GENERAR_MOVIMIENTO_FSP;
+
+  PROCEDURE GENERAR_MOVIMIENTO_EPS(IN_CTA_MOVIMIENTO_BASE  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  --IN_CTA_SALDO_PORTAFOLIO IN MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE,
+                                  IN_SOLICITUD            IN MPENGES.SPG_SOLICITUD%ROWTYPE,
+                                  IN_DETALLE_PAGO         IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+                                  IN_VALOR_UNIDAD_INV     IN MGENERAL.GEN_VALOR_UNIDAD.VALOR_UNIDAD%TYPE,
+                                  IN_OPERACION_CONCEPTO   IN mpenges.spg_operacion_concepto%ROWTYPE,
+                                  IN_USUARIO              IN VARCHAR2,
+                                  IN_ASIENTO_CONTABLE     IN  NUMBER,
+                                  OUT_COD_ERROR           OUT NUMBER,
+                                  OUT_MENSAJE_ERROR       OUT VARCHAR2)
+  IS
+    l_reg_cuenta_mov_vafi mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_vemp mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_obli mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_saldo_portafolio  MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE;
+    l_cuenta_movimiento_id mcuentas.cta_cuenta_movimiento.cuenta_movimiento_id%type;
+    l_valorPagoUnidades   NUMBER(18,8);
+    l_indice_cuenta       NUMBER(5);
+
+    l_error       VARCHAR2(2000);
+    l_resultado_contabilidad  VARCHAR2(2000);
+    htTablaValoresEps MCONTABILIDAD.HASH_TABLE;
+
+  BEGIN
+      OUT_COD_ERROR := 0;
+      vtT_DebitoAporteTOArreglo := MCUENTAS.CTA_CUENTAAFILIADO_PCK.DESET();
+      vtT_DebitoAporteTOArreglo.DELETE;
+      l_indice_cuenta:=1;
+
+BEGIN
+          SELECT
+                SP.SALDO_PORTAFOLIO_ID,
+                SP.CUENTA_ID,
+                SP.FONDO_ID,
+                SP.INVERSION_ID,
+                SP.SALDO_OBLIGATORIO,
+                SP.SALDO_VOL_AFILIADO,
+                SP.SALDO_VOL_EMPLEADOR,
+                SP.FECHA_CREACION,
+                SP.USUARIO_CREACION,
+                SP.FECHA_ULTIMA_MODIFICACION,
+                SP.USUARIO_ULTIMA_MODIFICACION,
+                SP.MFONDOS_SCN,
+                SP.RETENCION_CONTINGENTE
+           INTO  l_reg_saldo_portafolio.SALDO_PORTAFOLIO_ID,
+                 l_reg_saldo_portafolio.CUENTA_ID,
+                 l_reg_saldo_portafolio.FONDO_ID,
+                 l_reg_saldo_portafolio.INVERSION_ID,
+                 l_reg_saldo_portafolio.SALDO_OBLIGATORIO,
+                 l_reg_saldo_portafolio.SALDO_VOL_AFILIADO,
+                 l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR,
+                 l_reg_saldo_portafolio.FECHA_CREACION,
+                 l_reg_saldo_portafolio.USUARIO_CREACION,
+                 l_reg_saldo_portafolio.FECHA_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.USUARIO_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.MFONDOS_SCN,
+                 l_reg_saldo_portafolio.RETENCION_CONTINGENTE
+         FROM   MCUENTAS.CTA_SALDO_PORTAFOLIO SP,
+                MCUENTAS.CTA_CUENTA_DISPERSION CD
+         WHERE  SP.CUENTA_ID = CD.CUENTA_ID
+         AND    SP.INVERSION_ID = CD.INVERSION_ID
+         AND    CD.ESTADO = 'ACTIVO'
+         AND    CD.CUENTA_ID = IN_SOLICITUD.cuenta_afiliado;
+
+       EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+           l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', NO SE ENCONTRARON PORTAFOLIOS ACTIVOS ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN TOO_MANY_ROWS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', EL AFILIADO TIENE MAS DE UN PORTAFOLIO ACTIVO,' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN OTHERS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+       END;
+
+      l_reg_cuenta_mov_vafi := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vafi.concepto_id := C_CONCEPTO_VA_EPS;
+      l_reg_cuenta_mov_vafi.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vafi.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_vemp := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vemp.concepto_id := C_CONCEPTO_VE_EPS;
+      l_reg_cuenta_mov_vemp.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vemp.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_obli := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_obli.concepto_id := C_CONCEPTO_OBLI_EPS;
+      l_reg_cuenta_mov_obli.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_obli.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_valorPagoUnidades := IN_DETALLE_PAGO.VALOR_PESOS / IN_VALOR_UNIDAD_INV ;
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS EMPLEADOR
+      IF (l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vemp.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+
+        END IF;
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vemp.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vemp.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vemp.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vemp.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vemp.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vemp.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vemp.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR||'],  ' || '[DAR_APLICACION_MOVIMIENTO_VE] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vemp;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS AFILIADO
+      IF (l_reg_saldo_portafolio.SALDO_VOL_AFILIADO > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vafi.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.saldo_vol_afiliado >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.saldo_vol_afiliado*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_reg_saldo_portafolio.saldo_vol_afiliado;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.saldo_vol_afiliado;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vafi.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vafi.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vafi.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vafi.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vafi.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vafi.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vafi.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_AFILIADO||'],  ' || '[DAR_APLICACION_MOVIMIENTO_VA] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vafi;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+       END IF;
+
+
+
+      -- APLICAR MOVIMIENTO SALDO DE OBLIGATORIAS
+      IF (l_reg_saldo_portafolio.SALDO_OBLIGATORIO > 0 AND l_valorPagoUnidades > 0) THEN
+         vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_obli.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_OBLIGATORIO >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_OBLIGATORIO*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_obli.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_obli.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_obli.Concepto_Id,
+                                                                     l_reg_cuenta_mov_obli.Fondo_Id,
+                                                                     l_reg_cuenta_mov_obli.Inversion_Id,
+                                                                     l_reg_cuenta_mov_obli.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_obli.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_OBLIGATORIO||'],  ' || '[DAR_APLICACION_MOVIMIENTO_OBLI] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_obli;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+
+
+      --SE DEBITA MOVIMIENTO
+       IF OUT_COD_ERROR = 0 AND l_valorPagoUnidades =0 THEN
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DEBITARMOVIMIENTO_SP(vtT_DebitoAporteTOArreglo,
+                                                                OUT_COD_ERROR,
+                                                                OUT_MENSAJE_ERROR);
+       ELSE
+
+         l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error El Saldo del Afiliado no es Suficiente para Realizar el Pago o [' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+
+      END IF;
+
+
+
+      IF OUT_COD_ERROR != 0 THEN
+          l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error[' || SQLERRM ||
+
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+      ELSE
+         --GENERA CONTABILIDAD
+
+
+               htTablaValoresEps := HASHTABLE_CONTABILIDAD(l_reg_saldo_portafolio,
+                                                       IN_CTA_MOVIMIENTO_BASE,
+                                                       l_reg_cuenta_mov_vafi,
+                                                       l_reg_cuenta_mov_vemp,
+                                                       l_reg_cuenta_mov_obli,
+                                                       IN_DETALLE_PAGO.PERSONA_PAGO,
+                                                       C_OPER_CONCEPTO_EPS);
+
+               /*l_resultado_contabilidad:=MCONTABILIDAD.con_contabilizacion_pck.contabilizarasignado(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresEps,
+                                                                      IN_ASIENTO_CONTABLE);*/
+               l_resultado_contabilidad:=MCONTABILIDAD.Con_Contabilizacion_Core_Pck.Contabilizacion_Individual(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresEps,
+                                                                      IN_ASIENTO_CONTABLE,
+                                                                      'PL/SQL');
+
+
+                OUT_COD_ERROR := TO_NUMBER(SUBSTR(l_resultado_contabilidad, 1, (nvl(instr(l_resultado_contabilidad, '|', 1),0)-1)));
+                OUT_MENSAJE_ERROR := SUBSTR(l_resultado_contabilidad,1,200);
+
+      END IF;
+  END GENERAR_MOVIMIENTO_EPS;
+
+  PROCEDURE GENERAR_MOVIMIENTO_CAJA(IN_CTA_MOVIMIENTO_BASE  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  --IN_CTA_SALDO_PORTAFOLIO IN MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE,
+                                  IN_SOLICITUD            IN MPENGES.SPG_SOLICITUD%ROWTYPE,
+                                  IN_DETALLE_PAGO         IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+                                  IN_VALOR_UNIDAD_INV     IN MGENERAL.GEN_VALOR_UNIDAD.VALOR_UNIDAD%TYPE,
+                                  IN_OPERACION_CONCEPTO   IN mpenges.spg_operacion_concepto%ROWTYPE,
+                                  IN_USUARIO              IN VARCHAR2,
+                                  IN_ASIENTO_CONTABLE     IN  NUMBER,
+                                  OUT_COD_ERROR           OUT NUMBER,
+                                  OUT_MENSAJE_ERROR       OUT VARCHAR2)
+  IS
+    l_reg_cuenta_mov_vafi mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_vemp mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_obli mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_saldo_portafolio  MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE;
+    l_cuenta_movimiento_id mcuentas.cta_cuenta_movimiento.cuenta_movimiento_id%type;
+    l_valorPagoUnidades   NUMBER(18,8);
+    l_indice_cuenta       NUMBER(5);
+
+    l_error       VARCHAR2(2000);
+    l_resultado_contabilidad  VARCHAR2(2000);
+    htTablaValoresCaja MCONTABILIDAD.HASH_TABLE;
+
+  BEGIN
+      OUT_COD_ERROR := 0;
+      vtT_DebitoAporteTOArreglo := MCUENTAS.CTA_CUENTAAFILIADO_PCK.DESET();
+      vtT_DebitoAporteTOArreglo.DELETE;
+      l_indice_cuenta:=1;
+
+BEGIN
+          SELECT
+                SP.SALDO_PORTAFOLIO_ID,
+                SP.CUENTA_ID,
+                SP.FONDO_ID,
+                SP.INVERSION_ID,
+                SP.SALDO_OBLIGATORIO,
+                SP.SALDO_VOL_AFILIADO,
+                SP.SALDO_VOL_EMPLEADOR,
+                SP.FECHA_CREACION,
+                SP.USUARIO_CREACION,
+                SP.FECHA_ULTIMA_MODIFICACION,
+                SP.USUARIO_ULTIMA_MODIFICACION,
+                SP.MFONDOS_SCN,
+                SP.RETENCION_CONTINGENTE
+           INTO  l_reg_saldo_portafolio.SALDO_PORTAFOLIO_ID,
+
+                 l_reg_saldo_portafolio.CUENTA_ID,
+                 l_reg_saldo_portafolio.FONDO_ID,
+                 l_reg_saldo_portafolio.INVERSION_ID,
+                 l_reg_saldo_portafolio.SALDO_OBLIGATORIO,
+                 l_reg_saldo_portafolio.SALDO_VOL_AFILIADO,
+                 l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR,
+                 l_reg_saldo_portafolio.FECHA_CREACION,
+                 l_reg_saldo_portafolio.USUARIO_CREACION,
+                 l_reg_saldo_portafolio.FECHA_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.USUARIO_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.MFONDOS_SCN,
+                 l_reg_saldo_portafolio.RETENCION_CONTINGENTE
+         FROM   MCUENTAS.CTA_SALDO_PORTAFOLIO SP,
+                MCUENTAS.CTA_CUENTA_DISPERSION CD
+         WHERE  SP.CUENTA_ID = CD.CUENTA_ID
+         AND    SP.INVERSION_ID = CD.INVERSION_ID
+         AND    CD.ESTADO = 'ACTIVO'
+         AND    CD.CUENTA_ID = IN_SOLICITUD.cuenta_afiliado;
+
+       EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+           l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', NO SE ENCONTRARON PORTAFOLIOS ACTIVOS ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN TOO_MANY_ROWS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', EL AFILIADO TIENE MAS DE UN PORTAFOLIO ACTIVO,' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN OTHERS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+       END;
+
+           l_reg_cuenta_mov_vafi := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vafi.concepto_id := C_CONCEPTO_VA_CAJA;
+      l_reg_cuenta_mov_vafi.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vafi.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_vemp := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vemp.concepto_id := C_CONCEPTO_VE_CAJA;
+      l_reg_cuenta_mov_vemp.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vemp.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_obli := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_obli.concepto_id := C_CONCEPTO_OBLI_CAJA;
+      l_reg_cuenta_mov_obli.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_obli.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_valorPagoUnidades := IN_DETALLE_PAGO.VALOR_PESOS / IN_VALOR_UNIDAD_INV ;
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS EMPLEADOR
+      IF (l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vemp.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+
+        END IF;
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vemp.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vemp.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vemp.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vemp.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vemp.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vemp.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vemp.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR||'], ' || '[DAR_APLICACION_MOVIMIENTO_VE] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vemp;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS AFILIADO
+      IF (l_reg_saldo_portafolio.SALDO_VOL_AFILIADO > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vafi.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.saldo_vol_afiliado >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.saldo_vol_afiliado*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_reg_saldo_portafolio.saldo_vol_afiliado;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.saldo_vol_afiliado;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vafi.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vafi.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vafi.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vafi.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vafi.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vafi.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vafi.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_AFILIADO||'], ' || '[DAR_APLICACION_MOVIMIENTO_VA] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vafi;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+       END IF;
+
+
+
+      -- APLICAR MOVIMIENTO SALDO DE OBLIGATORIAS
+      IF (l_reg_saldo_portafolio.SALDO_OBLIGATORIO > 0 AND l_valorPagoUnidades > 0) THEN
+         vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_obli.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_OBLIGATORIO >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_OBLIGATORIO*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_obli.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_obli.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_obli.Concepto_Id,
+                                                                     l_reg_cuenta_mov_obli.Fondo_Id,
+                                                                     l_reg_cuenta_mov_obli.Inversion_Id,
+                                                                     l_reg_cuenta_mov_obli.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_obli.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_OBLIGATORIO||'], ' || '[DAR_APLICACION_MOVIMIENTO_OBLI] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_obli;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+      --SE DEBITA MOVIMIENTO
+       IF OUT_COD_ERROR = 0 AND l_valorPagoUnidades =0 THEN
+
+           MCUENTAS.CTA_CUENTAAFILIADO_PCK.DEBITARMOVIMIENTO_SP(vtT_DebitoAporteTOArreglo,
+                                                                OUT_COD_ERROR,
+                                                                OUT_MENSAJE_ERROR);
+       ELSE
+
+          l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error El Saldo del Afiliado no es Suficiente para Realizar el Pago o [' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+
+      END IF;
+
+
+
+
+      IF OUT_COD_ERROR != 0 THEN
+
+
+          l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error[' || SQLERRM ||
+                     '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+      ELSE
+         --GENERA CONTABILIDAD
+
+
+               htTablaValoresCaja := HASHTABLE_CONTABILIDAD(l_reg_saldo_portafolio,
+                                                       IN_CTA_MOVIMIENTO_BASE,
+                                                       l_reg_cuenta_mov_vafi,
+                                                       l_reg_cuenta_mov_vemp,
+                                                       l_reg_cuenta_mov_obli,
+                                                       IN_DETALLE_PAGO.PERSONA_PAGO,
+                                                       C_OPER_CONCEPTO_CAJA);
+
+               /*l_resultado_contabilidad:=MCONTABILIDAD.con_contabilizacion_pck.contabilizarasignado(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresCaja,
+                                                                      IN_ASIENTO_CONTABLE);*/
+               l_resultado_contabilidad:=MCONTABILIDAD.Con_Contabilizacion_Core_Pck.Contabilizacion_Individual(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresCaja,
+                                                                      IN_ASIENTO_CONTABLE,
+                                                                      'PL/SQL');
+
+
+                OUT_COD_ERROR := TO_NUMBER(SUBSTR(l_resultado_contabilidad, 1, (nvl(instr(l_resultado_contabilidad, '|', 1),0)-1)));
+                OUT_MENSAJE_ERROR := SUBSTR(l_resultado_contabilidad,1,200);
+
+      END IF;
+  END GENERAR_MOVIMIENTO_CAJA;
+
+  PROCEDURE GENERAR_MOVIMIENTO_AFP(IN_CTA_MOVIMIENTO_BASE  IN mcuentas.cta_cuenta_movimiento%ROWTYPE,
+                                  --IN_CTA_SALDO_PORTAFOLIO IN MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE,
+                                  IN_SOLICITUD            IN MPENGES.SPG_SOLICITUD%ROWTYPE,
+                                  IN_DETALLE_PAGO         IN MPENGES.SPG_DETALLE_PAGO%ROWTYPE,
+                                  IN_VALOR_UNIDAD_INV     IN MGENERAL.GEN_VALOR_UNIDAD.VALOR_UNIDAD%TYPE,
+                                  IN_OPERACION_CONCEPTO   IN mpenges.spg_operacion_concepto%ROWTYPE,
+                                  IN_USUARIO              IN VARCHAR2,
+                                  IN_ASIENTO_CONTABLE     IN NUMBER,
+                                  IN_CONSECUTIVO_PAGO     IN NUMBER,
+                                  OUT_COD_ERROR           OUT NUMBER,
+                                  OUT_MENSAJE_ERROR       OUT VARCHAR2)
+  IS
+    l_reg_cuenta_mov_vafi mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_vemp mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_cuenta_mov_obli mcuentas.cta_cuenta_movimiento%ROWTYPE;
+    l_reg_saldo_portafolio  MCUENTAS.CTA_SALDO_PORTAFOLIO%ROWTYPE;
+    l_cuenta_movimiento_id mcuentas.cta_cuenta_movimiento.cuenta_movimiento_id%type;
+    l_valorPagoUnidades   NUMBER(18,8);
+    l_indice_cuenta       NUMBER(5);
+    l_asiento_contable_id NUMBER(20);
+    l_consecutivo_pago_id NUMBER(20);
+
+    l_error       VARCHAR2(2000);
+    l_resultado_contabilidad  VARCHAR2(2000);
+    htTablaValoresAfp MCONTABILIDAD.HASH_TABLE;
+
+  BEGIN
+      OUT_COD_ERROR := 0;
+      l_asiento_contable_id := IN_ASIENTO_CONTABLE;
+      l_consecutivo_pago_id := IN_CONSECUTIVO_PAGO;
+      vtT_DebitoAporteTOArreglo := MCUENTAS.CTA_CUENTAAFILIADO_PCK.DESET();
+      vtT_DebitoAporteTOArreglo.DELETE;
+      l_indice_cuenta:=1;
+
+      --OBTENER ID DEL ASIENTO CONTABLE Y CONSECUTIVO DE PAGO
+        /*BEGIN
+            EXECUTE IMMEDIATE l_sentencia_cons_pago INTO l_consecutivo_pago_id;
+            EXECUTE IMMEDIATE l_sentencia_asiento_id INTO l_asiento_contable_id;
+
+          OUT_ASIENTO_CONTABLE := l_asiento_contable_id;
+          OUT_CONSECUTIVO_PAGO := l_consecutivo_pago_id;
+        EXCEPTION
+          WHEN OTHERS THEN
+
+           l_error :=  'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '[OBTENIENDO_ASIENTO_CONSECUTIVO_PAGO] Error[' || SQLERRM ||
+           '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+        END;*/
+
+BEGIN
+          SELECT
+                SP.SALDO_PORTAFOLIO_ID,
+                SP.CUENTA_ID,
+                SP.FONDO_ID,
+                SP.INVERSION_ID,
+                SP.SALDO_OBLIGATORIO,
+                SP.SALDO_VOL_AFILIADO,
+                SP.SALDO_VOL_EMPLEADOR,
+                SP.FECHA_CREACION,
+                SP.USUARIO_CREACION,
+                SP.FECHA_ULTIMA_MODIFICACION,
+                SP.USUARIO_ULTIMA_MODIFICACION,
+                SP.MFONDOS_SCN,
+                SP.RETENCION_CONTINGENTE
+           INTO  l_reg_saldo_portafolio.SALDO_PORTAFOLIO_ID,
+
+                 l_reg_saldo_portafolio.CUENTA_ID,
+                 l_reg_saldo_portafolio.FONDO_ID,
+                 l_reg_saldo_portafolio.INVERSION_ID,
+                 l_reg_saldo_portafolio.SALDO_OBLIGATORIO,
+                 l_reg_saldo_portafolio.SALDO_VOL_AFILIADO,
+                 l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR,
+                 l_reg_saldo_portafolio.FECHA_CREACION,
+                 l_reg_saldo_portafolio.USUARIO_CREACION,
+                 l_reg_saldo_portafolio.FECHA_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.USUARIO_ULTIMA_MODIFICACION,
+                 l_reg_saldo_portafolio.MFONDOS_SCN,
+                 l_reg_saldo_portafolio.RETENCION_CONTINGENTE
+         FROM   MCUENTAS.CTA_SALDO_PORTAFOLIO SP,
+                MCUENTAS.CTA_CUENTA_DISPERSION CD
+         WHERE  SP.CUENTA_ID = CD.CUENTA_ID
+         AND    SP.INVERSION_ID = CD.INVERSION_ID
+         AND    CD.ESTADO = 'ACTIVO'
+         AND    CD.CUENTA_ID = IN_SOLICITUD.cuenta_afiliado;
+
+       EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+           l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', NO SE ENCONTRARON PORTAFOLIOS ACTIVOS ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN TOO_MANY_ROWS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', EL AFILIADO TIENE MAS DE UN PORTAFOLIO ACTIVO,' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        WHEN OTHERS THEN
+          l_error := 'CUENTA_ID = ' || IN_SOLICITUD.cuenta_afiliado || ', ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+       END;
+
+      l_reg_cuenta_mov_vafi := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vafi.Consecutivo_Pago := l_consecutivo_pago_id;
+      l_reg_cuenta_mov_vafi.Numero_Asiento_Id := l_asiento_contable_id;
+      l_reg_cuenta_mov_vafi.concepto_id := C_CONCEPTO_VA_AFP;
+      l_reg_cuenta_mov_vafi.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vafi.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_vemp := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_vemp.Consecutivo_Pago := l_consecutivo_pago_id;
+      l_reg_cuenta_mov_vemp.Numero_Asiento_Id := l_asiento_contable_id;
+      l_reg_cuenta_mov_vemp.concepto_id := C_CONCEPTO_VE_AFP;
+      l_reg_cuenta_mov_vemp.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_vemp.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_reg_cuenta_mov_obli := IN_CTA_MOVIMIENTO_BASE;
+      l_reg_cuenta_mov_obli.Consecutivo_Pago := l_consecutivo_pago_id;
+      l_reg_cuenta_mov_obli.Numero_Asiento_Id := l_asiento_contable_id;
+      l_reg_cuenta_mov_obli.concepto_id := C_CONCEPTO_OBLI_AFP;
+      l_reg_cuenta_mov_obli.caja_pago   := IN_OPERACION_CONCEPTO.CAJA_PAGO;
+      l_reg_cuenta_mov_obli.Inversion_Id := l_reg_saldo_portafolio.INVERSION_ID;
+
+      l_valorPagoUnidades := IN_DETALLE_PAGO.VALOR_PESOS / IN_VALOR_UNIDAD_INV ;
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS EMPLEADOR
+      IF (l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vemp.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vemp.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vemp.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR;
+
+        END IF;
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vemp.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vemp.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vemp.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vemp.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vemp.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vemp.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vemp.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR||'], ' || '[DAR_APLICACION_MOVIMIENTO_VE] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vemp;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+      END IF;
+
+
+      -- APLICAR MOVIMIENTO SALDO DE VOLUNTARIAS AFILIADO
+      IF (l_reg_saldo_portafolio.SALDO_VOL_AFILIADO > 0 AND l_valorPagoUnidades > 0) THEN
+        vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_vafi.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.saldo_vol_afiliado >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_vafi.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.saldo_vol_afiliado*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_vafi.Numero_Unidades:=l_reg_saldo_portafolio.saldo_vol_afiliado;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.saldo_vol_afiliado;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_vafi.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_vafi.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_vafi.Concepto_Id,
+                                                                     l_reg_cuenta_mov_vafi.Fondo_Id,
+                                                                     l_reg_cuenta_mov_vafi.Inversion_Id,
+                                                                     l_reg_cuenta_mov_vafi.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_vafi.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_VOL_AFILIADO||'], ' || '[DAR_APLICACION_MOVIMIENTO_VA] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_vafi;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+          END IF;
+
+       END IF;
+
+
+
+      -- APLICAR MOVIMIENTO SALDO DE OBLIGATORIAS
+      IF (l_reg_saldo_portafolio.SALDO_OBLIGATORIO > 0 AND l_valorPagoUnidades > 0) THEN
+         vtT_DebitoAporteTO := NULL;
+         -- Consultando la Secuencia de Cuenta Movimiento Id VAFI
+         EXECUTE IMMEDIATE l_sentencia_cons_cta_mov INTO l_cuenta_movimiento_id;
+         l_reg_cuenta_mov_obli.cuenta_movimiento_id:= l_cuenta_movimiento_id;
+
+         IF l_reg_saldo_portafolio.SALDO_OBLIGATORIO >= l_valorPagoUnidades THEN
+
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_valorPagoUnidades*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_valorPagoUnidades;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_valorPagoUnidades;
+        ELSE
+          l_reg_cuenta_mov_obli.Valor_Pesos:=ROUND(l_reg_saldo_portafolio.SALDO_OBLIGATORIO*IN_VALOR_UNIDAD_INV);
+          l_reg_cuenta_mov_obli.Numero_Unidades:=l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+          l_valorPagoUnidades:=l_valorPagoUnidades-l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+
+        END IF;
+
+
+
+          MCUENTAS.CTA_CUENTAAFILIADO_PCK.DARAPLICACIONMOVIMIENTO_SP(l_reg_cuenta_mov_obli.Cuenta_Id,
+                                                                     l_reg_cuenta_mov_obli.Cuenta_Movimiento_Id,
+                                                                     l_reg_cuenta_mov_obli.Concepto_Id,
+                                                                     l_reg_cuenta_mov_obli.Fondo_Id,
+                                                                     l_reg_cuenta_mov_obli.Inversion_Id,
+                                                                     l_reg_cuenta_mov_obli.Numero_Unidades,
+                                                                     vtT_DebitoAporteTO.listaAplicacionOperacion,
+                                                                     OUT_COD_ERROR,
+                                                                     OUT_MENSAJE_ERROR
+                                                                    );
+         IF OUT_COD_ERROR <> 0 THEN
+            --ERROR EN LOG Y ERROR CXP
+
+           l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || '- DETALLE_PAGO_ID = ' || IN_DETALLE_PAGO.DETALLE_PAGO_ID || ', NUM.UNIDADES ['||l_reg_cuenta_mov_obli.Numero_Unidades||'-'||l_reg_saldo_portafolio.SALDO_OBLIGATORIO||'], ' || '[DAR_APLICACION_MOVIMIENTO_OBLI] Error[' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+
+          ELSE
+              vtT_DebitoAporteTOArreglo.EXTEND;
+              vtT_DebitoAporteTO.cuenta_movimiento         := l_reg_cuenta_mov_obli;
+              vtT_DebitoAporteTOArreglo(l_indice_cuenta)   := vtT_DebitoAporteTO;
+              l_indice_cuenta := l_indice_cuenta + 1;
+
+
+          END IF;
+
+      END IF;
+
+
+      --SE DEBITA MOVIMIENTO
+       IF OUT_COD_ERROR = 0 AND l_valorPagoUnidades =0 THEN
+
+
+           MCUENTAS.CTA_CUENTAAFILIADO_PCK.DEBITARMOVIMIENTO_SP(vtT_DebitoAporteTOArreglo,
+                                                                OUT_COD_ERROR,
+                                                                OUT_MENSAJE_ERROR);
+       ELSE
+
+
+          l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error El Saldo del Afiliado no es Suficiente para Realizar el Pago o [' || SQLERRM ||
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+
+      END IF;
+
+
+      IF OUT_COD_ERROR != 0 THEN
+
+          l_error := 'PAGO_ID = ' || IN_DETALLE_PAGO.PAGO_ID || ', ' || '[DEBITA_MOVIMIENTO] Error[' || SQLERRM ||
+
+                      '] Traza[' || dbms_utility.format_error_backtrace || ']' ||
+                      'Mensaje Error: ' || OUT_COD_ERROR||'-'||OUT_MENSAJE_ERROR;
+
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+      ELSE
+         --GENERA CONTABILIDAD
+
+
+               htTablaValoresAfp := HASHTABLE_CONTABILIDAD(l_reg_saldo_portafolio,
+                                                       IN_CTA_MOVIMIENTO_BASE,
+                                                       l_reg_cuenta_mov_vafi,
+                                                       l_reg_cuenta_mov_vemp,
+                                                       l_reg_cuenta_mov_obli,
+                                                       IN_DETALLE_PAGO.PERSONA_PAGO,
+                                                       C_OPER_CONCEPTO_AFP);
+
+               /*l_resultado_contabilidad:=MCONTABILIDAD.con_contabilizacion_pck.contabilizarasignado(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresAfp,
+                                                                      l_asiento_contable_id);*/
+
+               l_resultado_contabilidad:=MCONTABILIDAD.Con_Contabilizacion_Core_Pck.Contabilizacion_Individual(IN_USUARIO,
+                                                                      IN_OPERACION_CONCEPTO.operacion,
+                                                                      htTablaValoresAfp,
+                                                                      l_asiento_contable_id,
+                                                                      'PL/SQL');
+
+                OUT_COD_ERROR := TO_NUMBER(SUBSTR(l_resultado_contabilidad, 1, (nvl(instr(l_resultado_contabilidad, '|', 1),0)-1)));
+                OUT_MENSAJE_ERROR := SUBSTR(l_resultado_contabilidad,1,200);
+
+      END IF;
+  END GENERAR_MOVIMIENTO_AFP;
+
+   PROCEDURE APLICA_PAGO_FONDO (IN_SOLICITUD            MPENGES.SPG_SOLICITUD%ROWTYPE,
+                               IN_REG_PAGO             MPENGES.SPG_PAGO%ROWTYPE,
+                               IN_REG_CUENTA_POR_PAGAR MPENGES.SPG_CUENTA_POR_PAGAR%ROWTYPE,
+                               IN_NOMINA_PENSIONADO_ID MNOMPEN.NOMP_NOMINA_PENSIONADO.NOMINA_PENSIONADO_ID%TYPE,
+                               IN_USUARIO IN VARCHAR2,
+                               OUT_COD_RESPUESTA OUT NUMBER,
+                               OUT_MENSAJE OUT VARCHAR2)
+  IS
+   l_reg_pago             MPENGES.SPG_PAGO%ROWTYPE;
+   l_reg_cuenta_por_pagar MPENGES.SPG_CUENTA_POR_PAGAR%ROWTYPE;
+   l_detenerProceso       BOOLEAN := FALSE;
+
+   l_inversion_conf       NUMBER(20);
+   l_sumaSaldos           NUMBER(18,8);
+   l_unidadesPago         NUMBER(18,8);
+   l_consecutivo_pago_id  NUMBER(20);
+   l_asiento_contable_id  NUMBER(20);
+   l_estadoSaap           NUMBER(5);
+
+   l_descripcionInversion VARCHAR2(200);
+   l_error                VARCHAR2(2000);
+   l_fechaOperacion       DATE;
+
+   l_codOperacionId         MPENGES.SPG_OPERACION_CONCEPTO.CODIGO_OPERACION_ID%TYPE;
+   l_valorUnidadInversion   MGENERAL.GEN_VALOR_UNIDAD.VALOR_UNIDAD%TYPE;
+   l_reg_saldo_portafolio   mcuentas.CTA_SALDO_PORTAFOLIO%ROWTYPE;
+   l_reg_cuenta_movimiento  mcuentas.cta_cuenta_movimiento%ROWTYPE;
+   l_reg_tipo_pago          mpenges.spg_tipo_pago%ROWTYPE;
+   l_reg_solicitud          mpenges.spg_solicitud%ROWTYPE;
+   l_reg_operacion_concepto mpenges.spg_operacion_concepto%ROWTYPE;
+   l_reg_detalle_pago       mpenges.spg_detalle_pago%ROWTYPE;
+   l_bloqueoOperacion       MGENERAL.GEN_FONDO.BLOQUEO_OPERACION%TYPE;
+   l_bloqueoPagos           MGENERAL.GEN_FONDO.BLOQUEO_PAGOS%TYPE;
+   l_bloqueoTransferencia   MGENERAL.GEN_FONDO.BLOQUEO_TRANSFERENCIA%TYPE;
+   l_estadoProcesoCierre    MGENERAL.GEN_FONDO.ESTADO_PROCESO_CIERRE%TYPE;
+
+   l_vCodigoError  NUMBER(10);
+   l_vMensajeError VARCHAR2(2000);
+
+   CURSOR OBTENER_DETALLE_PAGO (P_PAGO_ID IN NUMBER)
+   IS
+      SELECT P.DETALLE_PAGO_ID
+            , P.PAGO_ID
+            , P.OPERACION_CONCEPTO_ID
+            , P.VALOR_PESOS
+            , P.AFECTA_PAGO
+            , P.BENEFICIARIO_ID
+            , P.MEDIO_PAGO
+            , P.BANCO_ID
+            , P.TIPO_CUENTA
+            , P.CUENTA_BANCARIA
+            , P.OFICINA_PORVENIR_ID
+            , P.ESTADO
+            , P.ESTADO_SAAP
+            , P.CONSECUTIVO_PAGO
+            , P.ID_FACTURA
+            , P.FECHA_CREACION
+            , P.USUARIO_CREACION
+            , P.FECHA_ULTIMA_MODIFICACION
+            , P.USUARIO_ULTIMA_MODIFICACION
+            , P.ESTADO_ERP_ID
+            , P.NUMERO_ASIENTO_ID
+            , P.PERSONA_PAGO
+            , P.DESCUENTO_ADICIONAL_ID
+            , P.MODALIDAD_GIRO
+            , P.NUM_CHEQUE
+            , P.NUM_AUTORIZACION
+            , P.CUENTA_POR_COBRAR_ID
+            , P.PERIODO
+            , P.NUM_PAG_SEGURIDAD_SOCIAL
+            , P.MFONDOS_SCN
+            FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C
+            WHERE P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+            AND C.TIPO_PAGO_ID= C_COD_OPER_RET_PROGRAMADO
+            AND P.PAGO_ID = P_PAGO_ID
+            ORDER BY P.OPERACION_CONCEPTO_ID ASC;
+			
+  BEGIN
+     OUT_COD_RESPUESTA := 0;
+     l_reg_solicitud := IN_SOLICITUD;
+     l_reg_pago := IN_REG_PAGO;
+     l_reg_cuenta_por_pagar := IN_REG_CUENTA_POR_PAGAR;
+     g_valorUnidadInversion := 0;
+
+     BEGIN
+
+       SELECT tip.tipo_pago_id, tip.tipo_pago, tip.inversion_id
+       INTO l_reg_tipo_pago.tipo_pago_id,
+       l_reg_tipo_pago.tipo_pago,
+       l_reg_tipo_pago.inversion_id
+       FROM mpenges.spg_tipo_pago tip
+       WHERE tip.tipo_pago_id=l_reg_cuenta_por_pagar.tipo_pago_id;
+    EXCEPTION
+       WHEN OTHERS THEN
+
+        l_error := 'CUENTA_POR_PAGAR_ID = ' || l_reg_cuenta_por_pagar.cuenta_por_pagar_id || ', ' || '[CONSULTANDO_TIPO_PAGO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+        RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+    BEGIN
+       SELECT  con.codigo_operacion_id
+       INTO  l_codOperacionId
+       FROM mpenges.spg_operacion_concepto con
+       WHERE con.tipo_pago_id=l_reg_tipo_pago.tipo_pago_id
+       AND con.principal = 'S';
+     EXCEPTION
+      WHEN OTHERS THEN
+
+        l_error := 'TIPO_PAGO_ID = ' || l_reg_tipo_pago.tipo_pago_id || ', ' || '[CONSULTANDO_COD_OPERACION_ID] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+        RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+     BEGIN
+         SELECT  per.numero_identificacion,
+         (select ti.abreviatura from mgeneral.gen_tipo_identificacion ti where ti.tipo_identificacion_id=per.tipo_identificacion)
+         INTO l_numeroIdentificacion, l_tipoIdentificacion
+         FROM mpenges.spg_persona per
+         WHERE per.persona_id=l_reg_cuenta_por_pagar.persona_id
+         AND rownum=1  ;
+     EXCEPTION
+      WHEN OTHERS THEN
+
+        l_error := 'PAGO_ID = ' || l_reg_pago.pago_id || '-PERSONA_ID = ' || l_reg_cuenta_por_pagar.persona_id ||', ' || '[CONSULTANDO_PERSONA_PAGO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+     l_nombrePersona:=mpenges.spg_utilidades_persona_pck.obtener_nombres_ben2_fn(NULL, l_reg_cuenta_por_pagar.persona_id,1);
+
+    BEGIN
+        SELECT
+              (select inv.descripcion from mgeneral.gen_inversion inv
+              where inv.inversion_id=sp.inversion_id and inv.fondo_id=sp.fondo_id)descripcion_inversion,
+              SP.SALDO_PORTAFOLIO_ID,
+              SP.CUENTA_ID,
+              SP.FONDO_ID,
+              SP.INVERSION_ID,
+              SP.SALDO_OBLIGATORIO,
+              SP.SALDO_VOL_AFILIADO,
+              SP.SALDO_VOL_EMPLEADOR,
+              SP.FECHA_CREACION,
+              SP.USUARIO_CREACION,
+              SP.FECHA_ULTIMA_MODIFICACION,
+              SP.USUARIO_ULTIMA_MODIFICACION,
+              SP.MFONDOS_SCN,
+              SP.RETENCION_CONTINGENTE
+         INTO  l_descripcionInversion,
+               l_reg_saldo_portafolio.SALDO_PORTAFOLIO_ID,
+               l_reg_saldo_portafolio.CUENTA_ID,
+               l_reg_saldo_portafolio.FONDO_ID,
+               l_reg_saldo_portafolio.INVERSION_ID,
+               l_reg_saldo_portafolio.SALDO_OBLIGATORIO,
+               l_reg_saldo_portafolio.SALDO_VOL_AFILIADO,
+               l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR,
+               l_reg_saldo_portafolio.FECHA_CREACION,
+               l_reg_saldo_portafolio.USUARIO_CREACION,
+               l_reg_saldo_portafolio.FECHA_ULTIMA_MODIFICACION,
+               l_reg_saldo_portafolio.USUARIO_ULTIMA_MODIFICACION,
+               l_reg_saldo_portafolio.MFONDOS_SCN,
+               l_reg_saldo_portafolio.RETENCION_CONTINGENTE
+       FROM   MCUENTAS.CTA_SALDO_PORTAFOLIO SP,
+              MCUENTAS.CTA_CUENTA_DISPERSION CD
+       WHERE  SP.CUENTA_ID = CD.CUENTA_ID
+       AND    SP.INVERSION_ID = CD.INVERSION_ID
+       AND    CD.ESTADO = 'ACTIVO'
+       AND    CD.CUENTA_ID = l_reg_solicitud.cuenta_afiliado;
+
+     EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+         l_error := 'CUENTA_ID = ' || l_reg_solicitud.cuenta_afiliado || ', NO SE ENCONTRARON PORTAFOLIOS ACTIVOS ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+      WHEN TOO_MANY_ROWS THEN
+        l_error := 'CUENTA_ID = ' || l_reg_solicitud.cuenta_afiliado || ', EL AFILIADO TIENE MAS DE UN PORTAFOLIO ACTIVO,' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+      WHEN OTHERS THEN
+        l_error := 'CUENTA_ID = ' || l_reg_solicitud.cuenta_afiliado || ', ' || '[CONSULTANDO_SALDO_AFILIADO] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+     l_sumaSaldos := l_reg_saldo_portafolio.SALDO_VOL_EMPLEADOR +  l_reg_saldo_portafolio.SALDO_VOL_AFILIADO + l_reg_saldo_portafolio.SALDO_OBLIGATORIO;
+
+     BEGIN
+
+       SELECT ppi.INVERSION_ID
+       INTO l_inversion_conf
+       FROM MPENGES.SPG_TIPO_PAGO_POR_INVERSION  ppi
+       WHERE ppi.TIPO_PAGO_ID = l_reg_tipo_pago.tipo_pago_id
+       AND ppi.inversion_id=l_reg_saldo_portafolio.INVERSION_ID;
+
+     EXCEPTION
+       WHEN OTHERS THEN
+
+        l_inversion_conf:=NULL;
+        l_error := 'TIPO_PAGO_ID = ' || l_reg_tipo_pago.tipo_pago_id||'INVERSION_ID = ' || l_reg_saldo_portafolio.INVERSION_ID ||  ' INVALIDA PARA EL TIPO DE PAGO, ' ||l_reg_tipo_pago.tipo_pago_id || '[CONSULTANDO_CONFIGURACION_INVERSION] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+    IF(l_inversion_conf IN (4)) THEN
+     BEGIN
+         SELECT V.VALOR_UNIDAD,
+                F.FECHA_OPERACION,
+                F.BLOQUEO_OPERACION,
+                F.BLOQUEO_PAGOS,
+                F.BLOQUEO_TRANSFERENCIA,
+                F.ESTADO_PROCESO_CIERRE
+         INTO l_valorUnidadInversion,
+              l_fechaOperacion,
+              l_bloqueoOperacion,
+              l_bloqueoPagos,
+              l_bloqueoTransferencia,
+              l_estadoProcesoCierre
+         FROM MGENERAL.GEN_FONDO F,
+              MGENERAL.GEN_INVERSION I,
+              MGENERAL.GEN_VALOR_UNIDAD V
+         WHERE F.FONDO_ID = I.FONDO_ID AND
+              I.INVERSION_ID = V.INVERSION_ID AND
+              I.FONDO_ID = V.FONDO_ID AND
+              TRUNC(V.FECHA) = TRUNC(F.FECHA_OPERACION)
+          AND F.FONDO_ID =  C_FONDO_PENSION_OBLIG
+          AND I.INVERSION_ID =  l_inversion_conf;
+
+          g_valorUnidadInversion := l_valorUnidadInversion;
+     EXCEPTION WHEN OTHERS THEN
+        l_error := 'FONDO_ID = ' || l_reg_solicitud.cuenta_afiliado || 'INVERSION_ID = ' || l_inversion_conf ||', ' || '[CONSULTANDO_VALORINVERSION_FECHAOPERACION] Error[' || SQLERRM ||
+        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+     /*
+     IF(l_fechaOperacion != IN_REG_PAGO.Periodo) THEN
+        l_error := '[VALIDANDO_FECHA_OPERACION] - No existe valor de unidad de inversi¿¿n para el periodo ['||IN_REG_PAGO.Periodo||']' ;
+        l_detenerProceso := TRUE;
+        RAISE_APPLICATION_ERROR (-20001, l_error);
+     END IF ;
+     */
+     IF(l_bloqueoOperacion      = 'S' OR
+        l_bloqueoPagos          = 'S' OR
+        l_bloqueoTransferencia  = 'S' OR
+        l_estadoProcesoCierre   = 'S' )THEN
+
+        l_error := '[VALIDANDO_ESTADO_FONDO] - ESTADO DEL FONDO CERRADO : BLOQUEO_OPERACION ['||l_bloqueoOperacion||'] '||
+                   ' - BLOQUEO_PAGOS ['||l_bloqueoPagos||'] '||
+                   ' - BLOQUEO_TRANSFERENCIA ['||l_bloqueoTransferencia||'] '||
+                   ' - ESTADO_PROCESO_CIERRE ['||l_estadoProcesoCierre||'] ';
+       l_detenerProceso := TRUE;
+       RAISE_APPLICATION_ERROR (-20001, l_error);
+     END IF;
+
+    ELSE
+       l_error := 'INVERSION_ID = ' || l_inversion_conf ||  ' INVALIDA, VALIDA (4), ITEM KEY [' ||l_reg_solicitud.CODIGO_RADICACION_REC||']';
+       RAISE_APPLICATION_ERROR (-20001, l_error);
+    END IF;
+
+    l_unidadesPago := l_reg_pago.VALOR_PESOS_TOTAL / l_valorUnidadInversion;
+
+    IF l_sumaSaldos < l_unidadesPago AND l_periodo_suspendido = FALSE THEN
+
+        l_error := ' EL SALDO DE LA CUENTA [' || l_sumaSaldos ||  '] ES MENOR DEL VALOR DEL PAGO ['||l_unidadesPago||'], ITEM KEY [' ||l_reg_solicitud.CODIGO_RADICACION_REC||']';
+        RAISE_APPLICATION_ERROR (-20001, l_error);
+
+    ELSE
+       --OBTENER ID DEL ASIENTO CONTABLE Y CONSECUTIVO DE PAGO
+       /* BEGIN
+            EXECUTE IMMEDIATE l_sentencia_cons_pago INTO l_consecutivo_pago_id;
+            EXECUTE IMMEDIATE l_sentencia_asiento_id INTO l_asiento_contable_id;
+        EXCEPTION
+          WHEN OTHERS THEN
+
+           l_error :=  'ITEM KEY [' ||l_reg_solicitud.CODIGO_RADICACION_REC||'], ' || '[OBTENIENDO_ASIENTO_CONSECUTIVO_PAGO] Error[' || SQLERRM ||
+           '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        END;*/
+
+
+
+        
+    TYPE t_detalle_pago_tab IS TABLE OF OBTENER_DETALLE_PAGO%ROWTYPE;
+    l_detalle_pago_tab t_detalle_pago_tab;
+    CUR_DETALLE_PAGO OBTENER_DETALLE_PAGO%ROWTYPE;	
+	
+
+     -- BULK COLLECT para reemplazo de cursor
+    OPEN OBTENER_DETALLE_PAGO(l_reg_pago.pago_id);
+    FETCH OBTENER_DETALLE_PAGO BULK COLLECT INTO l_detalle_pago_tab;
+    CLOSE OBTENER_DETALLE_PAGO;  
+
+    FOR i IN 1 .. l_detalle_pago_tab.COUNT LOOP
+        CUR_DETALLE_PAGO := l_detalle_pago_tab(i);
+
+            -- OBTIENE EL REGISTRO DE DETALLE DE PAGO
+              l_reg_detalle_pago.DETALLE_PAGO_ID := CUR_DETALLE_PAGO.DETALLE_PAGO_ID            ;
+              l_reg_detalle_pago.PAGO_ID := CUR_DETALLE_PAGO.PAGO_ID                    ;
+              l_reg_detalle_pago.OPERACION_CONCEPTO_ID := CUR_DETALLE_PAGO.OPERACION_CONCEPTO_ID      ;
+              l_reg_detalle_pago.VALOR_PESOS := CUR_DETALLE_PAGO.VALOR_PESOS                ;
+              l_reg_detalle_pago.AFECTA_PAGO := CUR_DETALLE_PAGO.AFECTA_PAGO                ;
+              l_reg_detalle_pago.BENEFICIARIO_ID := CUR_DETALLE_PAGO.BENEFICIARIO_ID            ;
+              l_reg_detalle_pago.MEDIO_PAGO := CUR_DETALLE_PAGO.MEDIO_PAGO                 ;
+              l_reg_detalle_pago.BANCO_ID := CUR_DETALLE_PAGO.BANCO_ID                   ;
+              l_reg_detalle_pago.TIPO_CUENTA := CUR_DETALLE_PAGO.TIPO_CUENTA                ;
+              l_reg_detalle_pago.CUENTA_BANCARIA := CUR_DETALLE_PAGO.CUENTA_BANCARIA            ;
+              l_reg_detalle_pago.OFICINA_PORVENIR_ID := CUR_DETALLE_PAGO.OFICINA_PORVENIR_ID        ;
+              l_reg_detalle_pago.ESTADO := CUR_DETALLE_PAGO.ESTADO                     ;
+              l_reg_detalle_pago.ESTADO_SAAP := CUR_DETALLE_PAGO.ESTADO_SAAP                ;
+              l_reg_detalle_pago.CONSECUTIVO_PAGO := CUR_DETALLE_PAGO.CONSECUTIVO_PAGO           ;
+              l_reg_detalle_pago.ID_FACTURA := CUR_DETALLE_PAGO.ID_FACTURA                 ;
+              l_reg_detalle_pago.FECHA_CREACION := CUR_DETALLE_PAGO.FECHA_CREACION             ;
+              l_reg_detalle_pago.USUARIO_CREACION := CUR_DETALLE_PAGO.USUARIO_CREACION           ;
+              l_reg_detalle_pago.FECHA_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.FECHA_ULTIMA_MODIFICACION  ;
+              l_reg_detalle_pago.USUARIO_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.USUARIO_ULTIMA_MODIFICACION;
+              l_reg_detalle_pago.ESTADO_ERP_ID := CUR_DETALLE_PAGO.ESTADO_ERP_ID              ;
+              l_reg_detalle_pago.NUMERO_ASIENTO_ID := CUR_DETALLE_PAGO.NUMERO_ASIENTO_ID          ;
+              l_reg_detalle_pago.PERSONA_PAGO := CUR_DETALLE_PAGO.PERSONA_PAGO               ;
+              l_reg_detalle_pago.DESCUENTO_ADICIONAL_ID := CUR_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID     ;
+              l_reg_detalle_pago.MODALIDAD_GIRO := CUR_DETALLE_PAGO.MODALIDAD_GIRO             ;
+              l_reg_detalle_pago.NUM_CHEQUE := CUR_DETALLE_PAGO.NUM_CHEQUE                 ;
+              l_reg_detalle_pago.NUM_AUTORIZACION := CUR_DETALLE_PAGO.NUM_AUTORIZACION           ;
+              l_reg_detalle_pago.CUENTA_POR_COBRAR_ID := CUR_DETALLE_PAGO.CUENTA_POR_COBRAR_ID       ;
+              l_reg_detalle_pago.PERIODO := CUR_DETALLE_PAGO.PERIODO                    ;
+              l_reg_detalle_pago.NUM_PAG_SEGURIDAD_SOCIAL := CUR_DETALLE_PAGO.NUM_PAG_SEGURIDAD_SOCIAL   ;
+              l_reg_detalle_pago.MFONDOS_SCN := CUR_DETALLE_PAGO.MFONDOS_SCN  ;
+
+              l_global_pago_id := CUR_DETALLE_PAGO.PAGO_ID;
+
+              BEGIN
+                 SELECT  per.numero_identificacion,
+                 (select ti.abreviatura from mgeneral.gen_tipo_identificacion ti where ti.tipo_identificacion_id=per.tipo_identificacion)
+                 INTO l_numeroIdentificacion, l_tipoIdentificacion
+                 FROM mpenges.spg_persona per
+                 WHERE per.persona_id= l_reg_detalle_pago.Persona_Pago
+                 AND rownum=1  ;
+             EXCEPTION
+              WHEN OTHERS THEN
+
+                 l_numeroIdentificacion := C_NIT_ENT_APORT_LINEA;
+                 l_tipoIdentificacion   := 'NIT';
+ END;
+
+    l_nombrePersona:=mpenges.spg_utilidades_persona_pck.obtener_nombres_ben2_fn(NULL, l_reg_detalle_pago.Persona_Pago,1);
+
+        --OBTENER ID DEL ASIENTO CONTABLE Y CONSECUTIVO DE PAGO
+        BEGIN
+            EXECUTE IMMEDIATE l_sentencia_cons_pago INTO l_consecutivo_pago_id;
+            EXECUTE IMMEDIATE l_sentencia_asiento_id INTO l_asiento_contable_id;
+        EXCEPTION
+          WHEN OTHERS THEN
+
+           l_error :=  'ITEM KEY [' ||l_reg_solicitud.CODIGO_RADICACION_REC||'], ' || '[OBTENIENDO_ASIENTO_CONSECUTIVO_PAGO] Error[' || SQLERRM ||
+           '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+           RAISE_APPLICATION_ERROR (-20001, l_error);
+        END;
+
+            --sE VALIDA SI SE ENCUENTRA EN ESTADO SUSPENDIDO
+            IF (l_reg_detalle_pago.ESTADO IN ('SUSPENDIDO')) THEN
+
+                 PAGOS_SUSPENDIDOS ( l_reg_cuenta_por_pagar,
+                                     l_reg_pago,
+                                     l_reg_detalle_pago,
+                                     IN_USUARIO);
+
+                 ACTUALIZAR_NOMINA_PENSIONADO(IN_REG_PAGO,
+                                              IN_NOMINA_PENSIONADO_ID,
+                                              IN_USUARIO);
+
+
+            ELSIF l_reg_detalle_pago.ESTADO IN ('APROBADO') THEN
+
+                  -- DBMS_OUTPUT.PUT_LINE('------- APLICA PAGO FONDO  ESTADO LOTE -------');
+
+                  --OBTENER CTA_MOVIMIENTO BASE
+                  l_reg_cuenta_movimiento.cuenta_id                    :=l_reg_solicitud.cuenta_afiliado;
+                  l_reg_cuenta_movimiento.id_disponible                :='S';
+                  l_reg_cuenta_movimiento.naturaleza                   :='D';
+                  l_reg_cuenta_movimiento.usuario_Creacion             := IN_USUARIO;
+                  l_reg_cuenta_movimiento.fecha_Creacion               :=SYSDATE;
+                  l_reg_cuenta_movimiento.MFONDOS_SCN                  :=0;
+                  l_reg_cuenta_movimiento.fecha_Operacion              :=l_fechaOperacion;
+                  l_reg_cuenta_movimiento.fondo_Id                     :=C_FONDO_PENSION_OBLIG;
+                  l_reg_cuenta_movimiento.inversion_Id                 :=l_reg_saldo_portafolio.inversion_id;
+                  l_reg_cuenta_movimiento.tipo_id_nit_pago             :=l_tipoIdentificacion;
+                  l_reg_cuenta_movimiento.nit_Pago                     :=l_numeroIdentificacion;
+                  l_reg_cuenta_movimiento.fecha_pago                   :=l_fechaOperacion;
+                  l_reg_cuenta_movimiento.periodo_Pago                 :=to_number(l_reg_pago.periodo);
+                  l_reg_cuenta_movimiento.usuario_ultima_modificacion  := null ;
+                  l_reg_cuenta_movimiento.fecha_ultima_modificacion    := null ;
+                  l_reg_cuenta_movimiento.consecutivo_pago             :=l_consecutivo_pago_id;
+                  l_reg_cuenta_movimiento.Numero_Asiento_Id            :=l_asiento_contable_id;
+                  l_reg_cuenta_movimiento.Codigo_Operacion_Id          :=l_codOperacionId;
+
+                  -- OBTENER OPERACI¿¿N CONCEPTO
+                  BEGIN
+                       SELECT con.operacion_concepto_id,
+                              con.descuenta,
+                              con.caja_pago,
+                              con.codigo_operacion_id,
+                              con.operacion,
+                              con.principal
+                       INTO l_reg_operacion_concepto.Operacion_Concepto_Id,
+                       l_reg_operacion_concepto.Descuenta,
+                       l_reg_operacion_concepto.Caja_Pago,
+                       l_reg_operacion_concepto.Codigo_Operacion_Id,
+                       l_reg_operacion_concepto.operacion,
+                       l_reg_operacion_concepto.principal
+                       FROM mpenges.spg_operacion_concepto con
+                       WHERE con.operacion_concepto_id =  l_reg_detalle_pago.OPERACION_CONCEPTO_ID
+                       AND  con.tipo_pago_id = l_reg_pago.tipo_pago_id;
+                     EXCEPTION
+                      WHEN OTHERS THEN
+                        l_error := 'PAGO_ID = ' || l_reg_pago.pago_id || ', OPERACION_CONCEPTO_ID = ' || l_reg_detalle_pago.OPERACION_CONCEPTO_ID || '[CONSULTANDO_OPERACION_CONCEPTO] Error[' || SQLERRM ||
+                        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+                        RAISE_APPLICATION_ERROR (-20001, l_error);
+                     END;
+
+                     IF(l_codOperacionId IN (C_COD_OPER_RET_PROGRAMADO))
+                     THEN
+                       --l_reg_cuenta_movimiento.consecutivo_pago := l_consecutivo_pago_id;
+                       --l_reg_cuenta_movimiento.numero_asiento_id := l_asiento_contable_id;
+
+                         IF(l_reg_operacion_concepto.operacion_concepto_id IN (C_OPER_CONCEPTO_RET_PROGRAMADO,
+                                                                               C_OPER_CONCEPTO_DESC_ADICIONAL,
+                                                                               C_OPER_CONCEPTO_MES_ADICIONAL,
+                                                                               C_OPER_CONCEPTO_CAJA_APORT_VOL
+                                                                               )
+
+                           ) THEN
+
+                             GENERAR_MOV_RET_PROGRAMADO(l_reg_cuenta_movimiento,
+                                                       l_reg_solicitud,
+                                                       l_reg_detalle_pago,
+                                                       l_valorUnidadInversion,
+                                                       l_reg_operacion_concepto,
+                                                       IN_USUARIO,
+                                                       l_asiento_contable_id,
+                                                       l_vCodigoError,
+                                                       l_vMensajeError);
+
+                             IF l_reg_operacion_concepto.operacion_concepto_id IN (C_OPER_CONCEPTO_DESC_ADICIONAL) THEN
+
+                                ACTUALIZAR_NUMERO_PAGOS(l_reg_detalle_pago,IN_USUARIO,NULL);
+                             END IF;
+
+                         ELSIF(l_reg_operacion_concepto.operacion_concepto_id IN (C_OPER_CONCEPTO_FSP)) THEN
+
+                            GENERAR_MOVIMIENTO_FSP(l_reg_cuenta_movimiento,
+                                                   l_reg_solicitud,
+                                                   l_reg_detalle_pago,
+                                                   l_valorUnidadInversion,
+                                                   l_reg_operacion_concepto,
+                                                   IN_USUARIO,
+                                                   l_asiento_contable_id,
+                                                   l_vCodigoError,
+                                                   l_vMensajeError);
+                         ELSIF(l_reg_operacion_concepto.operacion_concepto_id IN (C_OPER_CONCEPTO_EPS)) THEN
+
+                            GENERAR_MOVIMIENTO_EPS(l_reg_cuenta_movimiento,
+                                                   l_reg_solicitud,
+                                                   l_reg_detalle_pago,
+                                                   l_valorUnidadInversion,
+                                                   l_reg_operacion_concepto,
+                                                   IN_USUARIO,
+                                                   l_asiento_contable_id,
+                                                   l_vCodigoError,
+                                                   l_vMensajeError);
+                         ELSIF(l_reg_operacion_concepto.operacion_concepto_id IN (C_OPER_CONCEPTO_CAJA)) THEN
+
+                             GENERAR_MOVIMIENTO_CAJA(l_reg_cuenta_movimiento,
+                                                   l_reg_solicitud,
+                                                   l_reg_detalle_pago,
+                                                   l_valorUnidadInversion,
+                                                   l_reg_operacion_concepto,
+                                                   IN_USUARIO,
+                                                   l_asiento_contable_id,
+                                                   l_vCodigoError,
+                                                   l_vMensajeError);
+                         ELSIF(l_reg_operacion_concepto.operacion_concepto_id IN (C_OPER_CONCEPTO_AFP)) THEN
+
+                            GENERAR_MOVIMIENTO_AFP(l_reg_cuenta_movimiento,
+                                                   l_reg_solicitud,
+                                                   l_reg_detalle_pago,
+                                                   l_valorUnidadInversion,
+                                                   l_reg_operacion_concepto,
+                                                   IN_USUARIO,
+                                                   l_asiento_contable_id,
+                                                   l_consecutivo_pago_id,
+                                                   l_vCodigoError,
+                                                   l_vMensajeError);
+                         ELSE
+                              l_vCodigoError  := 1;
+                              l_vMensajeError := 'PAGO_ID['||IN_REG_PAGO.PAGO_ID||'] - OPERACION_CONCEPTO_ID NO VALIDO ['||l_reg_operacion_concepto.operacion_concepto_id||']';
+                         END IF  ;
+                     ELSE
+                         l_error :=  'ITEM KEY [' ||l_reg_solicitud.CODIGO_RADICACION_REC||'], CODIGO_OPERACION_ID [' ||l_codOperacionId|| '] INVALIDO ';
+                         RAISE_APPLICATION_ERROR (-20001, l_error);
+                     END IF;
+
+                  IF(l_vCodigoError = 0) THEN
+
+                     IF(l_reg_operacion_concepto.operacion_concepto_id NOT IN(C_OPER_CONCEPTO_COMISION_ADM,
+                                                                              C_OPER_CONCEPTO_COT_CAJA,
+                                                                              C_OPER_CONCEPTO_RETEFUENTE,
+                                                                              C_OPER_CONCEPTO_SALUD_UPC,
+                                                                              C_OPER_CONCEPTO_CAJA_APORT_VOL))
+                     THEN
+                         l_estadoSaap := C_ESTADO_PEND_SAAP;
+                     ELSE
+                         l_estadoSaap := NULL;
+                     END IF;
+
+                    ACTUALIZAR_DETALLE_PAGO(l_asiento_contable_id,
+                                           l_consecutivo_pago_id,
+                                           IN_USUARIO,
+                                           l_estadoSaap,
+                                           NULL,
+                                           l_reg_detalle_pago,
+                                           NULL,
+                                           C_PARAMETRO_FONDO);
+
+                    ACTUALIZAR_NOMINA_PENSIONADO(IN_REG_PAGO,
+                                                 IN_NOMINA_PENSIONADO_ID,
+                                                 IN_USUARIO);
+                  ELSE
+                      RAISE_APPLICATION_ERROR (-20001, l_vMensajeError);
+                  END IF;
+
+            ELSIF CUR_DETALLE_PAGO.ESTADO NOT IN ('PAGADO')  THEN
+               l_error :=  'ITEM KEY [' ||l_reg_solicitud.CODIGO_RADICACION_REC||'], ' || 'ESTADO DEL PAGO INVALIDO ['||l_reg_detalle_pago.ESTADO||']';
+               RAISE_APPLICATION_ERROR (-20001, l_error);
+            END IF;
+
+            END LOOP;																																				 
+   END IF;
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF(l_detenerProceso) THEN
+        OUT_COD_RESPUESTA := 2;
+      ELSE
+        OUT_COD_RESPUESTA := 1;
+      END IF;
+    OUT_MENSAJE := 'ERROR EN EL METODO [APLICA_PAGO_FONDO] : '|| SQLERRM || '-' || l_error;
+    RAISE_APPLICATION_ERROR (-20001, OUT_MENSAJE);
+    -- ESCRIBIR EN LA TABLA DE ERRORES;
+  END;
+
+    PROCEDURE APLICA_PAGO_SOCIEDAD (IN_SOLICITUD           MPENGES.SPG_SOLICITUD%ROWTYPE,
+                                 IN_REG_PAGO             MPENGES.SPG_PAGO%ROWTYPE,
+                                 IN_REG_CUENTA_POR_PAGAR MPENGES.SPG_CUENTA_POR_PAGAR%ROWTYPE,
+                                 IN_NOMINA_PENSIONADO_ID MNOMPEN.NOMP_NOMINA_PENSIONADO.NOMINA_PENSIONADO_ID%TYPE,
+                                 IN_USUARIO IN VARCHAR2,
+                                 OUT_COD_RESPUESTA OUT NUMBER,
+                                 OUT_MENSAJE OUT VARCHAR2)
+  IS
+    l_reg_pago             MPENGES.SPG_PAGO%ROWTYPE;
+    l_reg_cuenta_por_pagar MPENGES.SPG_CUENTA_POR_PAGAR%ROWTYPE;
+    l_reg_solicitud        MPENGES.SPG_SOLICITUD%ROWTYPE;
+    l_inversionId          MGENERAL.GEN_INVERSION.INVERSION_ID%TYPE;
+    l_reg_operacion_concepto MPENGES.SPG_OPERACION_CONCEPTO%ROWTYPE;
+    l_reg_detalle_pago     MPENGES.SPG_DETALLE_PAGO%ROWTYPE;
+    l_tipoIdentificacionAfil   MCUENTAS.CTA_AFILIADO.TIPO_IDENTIFICACION%TYPE;
+    l_numeroIdentificacionAfil MCUENTAS.CTA_AFILIADO.NUMERO_IDENTIFICACION%TYPE;
+    l_cuentaPorCobrarId    MPENGES.SPG_CUENTA_POR_COBRAR.CUENTA_POR_COBRAR_ID%TYPE ;
+
+    l_descripcionAsiento   VARCHAR2(200);
+    l_error                VARCHAR2(2000);
+    l_nombreAfiliado       VARCHAR2(200);
+    l_asiento_contable_id  NUMBER;
+    htTablaValoresSociedad MCONTABILIDAD.HASH_TABLE;
+
+    l_nitTerceroCredito        NUMBER;
+    l_nombreTerceroCredito     VARCHAR2(200);
+    l_nitTerceroDebito         NUMBER;
+    l_nombreTerceroDebito      VARCHAR2(200);
+    l_idCXP                     VARCHAR2(200);
+    l_resultado_contabilidad  VARCHAR2(2000);
+    l_estadoSaap           NUMBER(5);
+
+    CURSOR OBTENER_DETALLE_PAGO (P_PAGO_ID IN NUMBER)
+     IS
+        SELECT P.DETALLE_PAGO_ID
+              , P.PAGO_ID
+              , P.OPERACION_CONCEPTO_ID
+              , P.VALOR_PESOS
+              , P.AFECTA_PAGO
+              , P.BENEFICIARIO_ID
+              , P.MEDIO_PAGO
+              , P.BANCO_ID
+              , P.TIPO_CUENTA
+              , P.CUENTA_BANCARIA
+              , P.OFICINA_PORVENIR_ID
+              , P.ESTADO
+              , P.ESTADO_SAAP
+              , P.CONSECUTIVO_PAGO
+              , P.ID_FACTURA
+              , P.FECHA_CREACION
+              , P.USUARIO_CREACION
+              , P.FECHA_ULTIMA_MODIFICACION
+              , P.USUARIO_ULTIMA_MODIFICACION
+              , P.ESTADO_ERP_ID
+              , P.NUMERO_ASIENTO_ID
+              , P.PERSONA_PAGO
+              , P.DESCUENTO_ADICIONAL_ID
+              , P.MODALIDAD_GIRO
+              , P.NUM_CHEQUE
+              , P.NUM_AUTORIZACION
+              , P.CUENTA_POR_COBRAR_ID
+              , P.PERIODO
+              , P.NUM_PAG_SEGURIDAD_SOCIAL
+              , P.MFONDOS_SCN
+              FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C
+              WHERE P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+              AND C.TIPO_PAGO_ID= C_COD_OPER_RET_PROGRAMADO
+              AND P.PAGO_ID = P_PAGO_ID
+              ORDER BY P.OPERACION_CONCEPTO_ID ASC;
+			 
+
+  BEGIN
+     OUT_COD_RESPUESTA := 0;
+     l_cuentaPorCobrarId := 0;
+     l_reg_solicitud := IN_SOLICITUD;
+     l_reg_pago := IN_REG_PAGO;
+     l_reg_cuenta_por_pagar := IN_REG_CUENTA_POR_PAGAR;
+     l_descripcionAsiento :=  NVL(OBTENER_VALOR_GEN_PARAMETRO(C_FONDO_PENSION_OBLIG,C_MODULO_PENS_GESTION,'DESCRIP_LINEA_ASIENTO'),'');
+
+     BEGIN
+         SELECT I.INVERSION_ID INTO l_inversionId
+         FROM MGENERAL.GEN_INVERSION I
+         WHERE I.FONDO_ID = C_FONDO_SOCIEDAD;
+     EXCEPTION WHEN OTHERS THEN
+         l_inversionId := NULL;
+     END;
+
+
+		TYPE t_detalle_pago_tab IS TABLE OF OBTENER_DETALLE_PAGO%ROWTYPE;
+		l_detalle_pago_tab t_detalle_pago_tab;
+    
+		CUR_DETALLE_PAGO OBTENER_DETALLE_PAGO%ROWTYPE;
+     
+         -- BULK COLLECT para reemplazo de cursor
+    OPEN OBTENER_DETALLE_PAGO(l_reg_pago.pago_id);
+    FETCH OBTENER_DETALLE_PAGO BULK COLLECT INTO l_detalle_pago_tab;
+    CLOSE OBTENER_DETALLE_PAGO;  
+	
+	FOR i IN 1 .. l_detalle_pago_tab.COUNT LOOP
+        CUR_DETALLE_PAGO := l_detalle_pago_tab(i);
+
+            -- OBTIENE EL REGISTRO DE DETALLE DE PAGO
+              l_reg_detalle_pago.DETALLE_PAGO_ID := CUR_DETALLE_PAGO.DETALLE_PAGO_ID            ;
+              l_reg_detalle_pago.PAGO_ID := CUR_DETALLE_PAGO.PAGO_ID                    ;
+              l_reg_detalle_pago.OPERACION_CONCEPTO_ID := CUR_DETALLE_PAGO.OPERACION_CONCEPTO_ID      ;
+              l_reg_detalle_pago.VALOR_PESOS := CUR_DETALLE_PAGO.VALOR_PESOS                ;
+              l_reg_detalle_pago.AFECTA_PAGO := CUR_DETALLE_PAGO.AFECTA_PAGO                ;
+              l_reg_detalle_pago.BENEFICIARIO_ID := CUR_DETALLE_PAGO.BENEFICIARIO_ID            ;
+              l_reg_detalle_pago.MEDIO_PAGO := CUR_DETALLE_PAGO.MEDIO_PAGO                 ;
+              l_reg_detalle_pago.BANCO_ID := CUR_DETALLE_PAGO.BANCO_ID                   ;
+              l_reg_detalle_pago.TIPO_CUENTA := CUR_DETALLE_PAGO.TIPO_CUENTA                ;
+              l_reg_detalle_pago.CUENTA_BANCARIA := CUR_DETALLE_PAGO.CUENTA_BANCARIA            ;
+              l_reg_detalle_pago.OFICINA_PORVENIR_ID := CUR_DETALLE_PAGO.OFICINA_PORVENIR_ID        ;
+              l_reg_detalle_pago.ESTADO := CUR_DETALLE_PAGO.ESTADO                     ;
+              l_reg_detalle_pago.ESTADO_SAAP := CUR_DETALLE_PAGO.ESTADO_SAAP                ;
+              l_reg_detalle_pago.CONSECUTIVO_PAGO := CUR_DETALLE_PAGO.CONSECUTIVO_PAGO           ;
+              l_reg_detalle_pago.ID_FACTURA := CUR_DETALLE_PAGO.ID_FACTURA                 ;
+              l_reg_detalle_pago.FECHA_CREACION := CUR_DETALLE_PAGO.FECHA_CREACION             ;
+              l_reg_detalle_pago.USUARIO_CREACION := CUR_DETALLE_PAGO.USUARIO_CREACION           ;
+              l_reg_detalle_pago.FECHA_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.FECHA_ULTIMA_MODIFICACION  ;
+              l_reg_detalle_pago.USUARIO_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.USUARIO_ULTIMA_MODIFICACION;
+              l_reg_detalle_pago.ESTADO_ERP_ID := CUR_DETALLE_PAGO.ESTADO_ERP_ID              ;
+              l_reg_detalle_pago.NUMERO_ASIENTO_ID := CUR_DETALLE_PAGO.NUMERO_ASIENTO_ID          ;
+              l_reg_detalle_pago.PERSONA_PAGO := CUR_DETALLE_PAGO.PERSONA_PAGO               ;
+              l_reg_detalle_pago.DESCUENTO_ADICIONAL_ID := CUR_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID     ;
+              l_reg_detalle_pago.MODALIDAD_GIRO := CUR_DETALLE_PAGO.MODALIDAD_GIRO             ;
+              l_reg_detalle_pago.NUM_CHEQUE := CUR_DETALLE_PAGO.NUM_CHEQUE                 ;
+              l_reg_detalle_pago.NUM_AUTORIZACION := CUR_DETALLE_PAGO.NUM_AUTORIZACION           ;
+              l_reg_detalle_pago.CUENTA_POR_COBRAR_ID := CUR_DETALLE_PAGO.CUENTA_POR_COBRAR_ID       ;
+              l_reg_detalle_pago.PERIODO := CUR_DETALLE_PAGO.PERIODO                    ;
+              l_reg_detalle_pago.NUM_PAG_SEGURIDAD_SOCIAL := CUR_DETALLE_PAGO.NUM_PAG_SEGURIDAD_SOCIAL   ;
+              l_reg_detalle_pago.MFONDOS_SCN := CUR_DETALLE_PAGO.MFONDOS_SCN  ;
+				
+				
+IF (CUR_DETALLE_PAGO.ESTADO IN ('SUSPENDIDO')) THEN
+
+                 PAGOS_SUSPENDIDOS ( l_reg_cuenta_por_pagar,
+                                     l_reg_pago,
+                                     l_reg_detalle_pago,
+                                     IN_USUARIO);
+
+                 ACTUALIZAR_NOMINA_PENSIONADO(IN_REG_PAGO,
+                                              IN_NOMINA_PENSIONADO_ID,
+                                              IN_USUARIO);
+
+         ELSIF CUR_DETALLE_PAGO.ESTADO IN ('APROBADO') THEN
+
+            -- DBMS_OUTPUT.PUT_LINE('------- APLICA PAGO SOCIEDAD  ESTADO LOTE -------');
+           -- OBTENER OPERACI¿¿N CONCEPTO
+              BEGIN
+                   SELECT con.operacion_concepto_id,
+                          con.descuenta,
+                          con.caja_pago,
+                          con.codigo_operacion_id,
+                          con.operacion,
+                          con.principal,
+                          con.descripcion_contable
+                   INTO l_reg_operacion_concepto.Operacion_Concepto_Id,
+                   l_reg_operacion_concepto.Descuenta,
+                   l_reg_operacion_concepto.Caja_Pago,
+                   l_reg_operacion_concepto.Codigo_Operacion_Id,
+                   l_reg_operacion_concepto.operacion,
+                   l_reg_operacion_concepto.principal,
+                   l_reg_operacion_concepto.descripcion_contable
+                   FROM mpenges.spg_operacion_concepto con
+                   WHERE con.operacion_concepto_id =  l_reg_detalle_pago.OPERACION_CONCEPTO_ID
+                   AND  con.tipo_pago_id = l_reg_pago.tipo_pago_id;
+
+             EXCEPTION
+              WHEN OTHERS THEN
+
+                l_error := 'PAGO_ID = ' || l_reg_pago.pago_id || ', OPERACION_CONCEPTO_ID = ' || l_reg_detalle_pago.OPERACION_CONCEPTO_ID || '[CONSULTANDO_OPERACION_CONCEPTO] Error[' || SQLERRM ||
+                '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+                RAISE_APPLICATION_ERROR (-20001, l_error);
+
+             END;
+
+             IF(l_reg_operacion_concepto.operacion_concepto_id NOT IN (C_OPER_CONCEPTO_COMISION_ADM))
+             THEN
+                  BEGIN
+                      MPENGES.SPG_GESTION_CXC_PCK.cargar_cxp_encxc_sp(l_reg_detalle_pago.DETALLE_PAGO_ID,
+                                                                      C_ESTADO_PEND_SAAP,
+                                                                      l_cuentaPorCobrarId);
+
+                  EXCEPTION WHEN OTHERS THEN
+                    l_cuentaPorCobrarId := 0;
+                 END;
+                 --OBTENER ID DEL ASIENTO CONTABLE
+                  BEGIN
+                      EXECUTE IMMEDIATE l_sentencia_asiento_id INTO l_asiento_contable_id;
+                  EXCEPTION
+                    WHEN OTHERS THEN
+
+                     l_error :=  'PAGO_ID = ' || l_reg_detalle_pago.PAGO_ID || '[OBTENIENDO_ASIENTO_CONSECUTIVO_PAGO] Error[' || SQLERRM ||
+                     '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+                     RAISE_APPLICATION_ERROR (-20001, l_error);
+
+                  END;
+
+                  BEGIN
+                      SELECT CA.TIPO_IDENTIFICACION,
+                             CA.NUMERO_IDENTIFICACION,
+                             (CA.PRIMER_NOMBRE || ' ' || CA.SEGUNDO_NOMBRE
+                             || ' ' || CA.PRIMER_APELLIDO || ' ' || CA.SEGUNDO_APELLIDO) AS NOMBRE_AFILIADO
+                             INTO l_tipoIdentificacionAfil,
+                                  l_numeroIdentificacionAfil,
+                                  l_nombreAfiliado
+                      FROM MCUENTAS.CTA_AFILIADO CA, MCUENTAS.CTA_CUENTA C
+                      WHERE C.AFILIADO_FONDO_ID = CA.AFILIADO_FONDO_ID
+                      AND C.CUENTA_ID = l_reg_solicitud.cuenta_afiliado;
+
+                  EXCEPTION
+                    WHEN OTHERS THEN
+                     l_error :=  'PAGO_ID = ' || l_reg_detalle_pago.PAGO_ID || '[OBTENIENDO_ASIENTO_CONSECUTIVO_PAGO] Error[' || SQLERRM ||
+                     '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+                     RAISE_APPLICATION_ERROR (-20001, l_error);
+
+                  END;
+
+                IF (l_reg_operacion_concepto.operacion_concepto_id NOT IN (C_OPER_CONCEPTO_EPS,
+                                                                           C_OPER_CONCEPTO_FSP,
+                                                                           C_OPER_CONCEPTO_CAJA,
+                                                                           C_OPER_CONCEPTO_COMISION_ADM,
+                                                                           C_OPER_CONCEPTO_AFP,
+                                                                           C_OPER_CONCEPTO_SALUD_UPC,
+                                                                           C_OPER_CONCEPTO_CAJA_APORT_VOL)) THEN
+                     BEGIN
+                         SELECT  per.numero_identificacion,
+                         (select ti.abreviatura from mgeneral.gen_tipo_identificacion ti where ti.tipo_identificacion_id=per.tipo_identificacion)
+                         INTO l_numeroIdentificacion, l_tipoIdentificacion
+                         FROM mpenges.spg_persona per
+                         WHERE per.persona_id=l_reg_detalle_pago.PERSONA_PAGO
+                         AND rownum=1  ;
+
+                     EXCEPTION
+                      WHEN OTHERS THEN
+                         l_error := 'PAGO_ID = ' || l_reg_pago.pago_id || '-PERSONA_ID = ' || l_reg_cuenta_por_pagar.persona_id ||', ' || '[CONSULTANDO_PERSONA_PAGO] Error[' || SQLERRM ||
+                        '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+                         RAISE_APPLICATION_ERROR (-20001, l_error);
+
+                     END;
+
+                     l_nombrePersona:=mpenges.spg_utilidades_persona_pck.obtener_nombres_ben2_fn(NULL, l_reg_detalle_pago.PERSONA_PAGO,1);
+
+
+                      l_nitTerceroDebito       := l_numeroIdentificacionAfil;
+                      l_nombreTerceroDebito     := l_nombreAfiliado;
+                      l_nitTerceroCredito       := l_numeroIdentificacion;
+                      l_nombreTerceroCredito   := l_nombrePersona;
+                ELSE
+                    l_nitTerceroCredito        := l_numeroIdentificacionAfil;
+                    l_nombreTerceroCredito     := l_nombreAfiliado;
+                    l_nitTerceroDebito         := l_numeroIdentificacionAfil;
+                    l_nombreTerceroDebito      := l_nombreAfiliado;
+                END IF;
+
+
+                 IF (l_descripcionAsiento IS NOT NULL AND l_cuentaPorCobrarId IS NOT NULL) THEN
+                     l_idCXP := CONCAT(l_descripcionAsiento,l_cuentaPorCobrarId);
+                 ELSE
+                     l_idCXP := NULL;
+                 END IF;
+
+                 htTablaValoresSociedad :=   MCONTABILIDAD.HASH_TABLE(MCONTABILIDAD.map_entry(key=>'FONDO',value=> C_FONDO_SOCIEDAD),
+                                                                      MCONTABILIDAD.map_entry(key=>'INVERSIONSOC',value=>NVL(l_inversionId,0)),
+                                                                      MCONTABILIDAD.map_entry(key=>'TIPODOCBASEDEB',value=>' '),
+                                                                      MCONTABILIDAD.map_entry(key=>'TIPODOCBASECRE',value=>' '),
+                                                                      MCONTABILIDAD.map_entry(key=>'NUMDOCBASEDEB',value=>' '),
+                                                                      MCONTABILIDAD.map_entry(key=>'NUMDOCBASECRE',value=>' '),
+                                                                      MCONTABILIDAD.map_entry(key=>'NITTERCERODEB',value=>NVL(l_nitTerceroDebito,0)),
+                                                                      MCONTABILIDAD.map_entry(key=>'NITTERCEROCRE',value=>NVL(l_nitTerceroCredito,0)),
+                                                                      MCONTABILIDAD.map_entry(key=>'NOMTERCERODEB',value=>NVL(l_nombreTerceroDebito,' ')),
+                                                                      MCONTABILIDAD.map_entry(key=>'NOMTERCEROCRE',value=>NVL(l_nombreTerceroCredito,' ')),
+                                                                      MCONTABILIDAD.map_entry(key=>'IDCXC',value=>NVL(l_idCXP,' ')),
+                                                                      MCONTABILIDAD.map_entry(key=>'VALORCONSOC',value=>NVL(l_reg_detalle_pago.valor_pesos,0)),
+                                                                      MCONTABILIDAD.map_entry(key=>'TIPOBENEFICIO',value=>NVL(l_reg_operacion_concepto.descripcion_contable,' ')));
+
+                l_resultado_contabilidad:=MCONTABILIDAD.con_contabilizacion_pck.contabilizarasignado(IN_USUARIO,
+                                                                                                     C_TOC_CAUSACION_BENEFICIOS,
+                                                                                                      htTablaValoresSociedad,
+                                                                                                      l_asiento_contable_id);
+
+                OUT_COD_RESPUESTA := TO_NUMBER(SUBSTR(l_resultado_contabilidad, 1, (nvl(instr(l_resultado_contabilidad, '|', 1),0)-1)));
+                OUT_MENSAJE := SUBSTR(l_resultado_contabilidad,1,200);
+
+                IF(OUT_COD_RESPUESTA = 0) THEN
+
+                   INSERTA_CONTABILIDAD_CXC(l_cuentaPorCobrarId,
+                                            l_asiento_contable_id,
+                                            l_reg_operacion_concepto.descripcion_contable,
+                                            l_idCXP,
+                                            IN_USUARIO);
+
+                    IF(l_reg_operacion_concepto.operacion_concepto_id NOT IN(C_OPER_CONCEPTO_COMISION_ADM,
+                                                                              C_OPER_CONCEPTO_COT_CAJA,
+                                                                              C_OPER_CONCEPTO_RETEFUENTE,
+                                                                              C_OPER_CONCEPTO_SALUD_UPC,
+                                                                              C_OPER_CONCEPTO_CAJA_APORT_VOL))
+                     THEN
+                         l_estadoSaap := C_ESTADO_PEND_SAAP;
+                     ELSE
+                         l_estadoSaap := NULL;
+                     END IF;
+
+                   ACTUALIZAR_DETALLE_PAGO(l_asiento_contable_id,
+                                          NULL,
+                                          IN_USUARIO,
+                                          l_estadoSaap,
+                                          l_cuentaPorCobrarId,
+                                          l_reg_detalle_pago,
+                                          NULL,
+                                          C_PAGADOR_SOCIEDAD);
+
+                    ACTUALIZAR_NOMINA_PENSIONADO(IN_REG_PAGO,
+                                                 IN_NOMINA_PENSIONADO_ID,
+                                                 IN_USUARIO);
+                    IF l_reg_operacion_concepto.operacion_concepto_id IN (C_OPER_CONCEPTO_DESC_ADICIONAL) THEN
+                      ACTUALIZAR_NUMERO_PAGOS(l_reg_detalle_pago,IN_USUARIO,NULL);
+                    END IF;
+
+                ELSE
+                      RAISE_APPLICATION_ERROR (-20001, OUT_MENSAJE);
+
+                END IF;
+
+             ELSE
+                 l_error := 'PAGO_ID = ' || l_reg_cuenta_por_pagar.cuenta_por_pagar_id || ', OPERACION_CONCEPTO_ID = '|| l_reg_operacion_concepto.operacion_concepto_id ||'- TIPO DE PAGO INVALIDO PARA SOCIEDAD';
+                 RAISE_APPLICATION_ERROR (-20001, l_error);
+             END IF;
+
+         END IF;
+     END LOOP;
+            END LOOP;
+        END IF;
+    END;
+
+  EXCEPTION
+    WHEN OTHERS THEN
+    OUT_COD_RESPUESTA := 1;
+    OUT_MENSAJE := 'ERROR EN EL METODO [APLICA_PAGO_SOCIEDAD] : '|| SQLERRM || '-' || l_error;
+    RAISE_APPLICATION_ERROR (-20001, OUT_MENSAJE);
+  END APLICA_PAGO_SOCIEDAD;
+
+   PROCEDURE APLICA_PAGO (IN_REG_PAGO IN MPENGES.SPG_PAGO%ROWTYPE,
+                         IN_USUARIO IN VARCHAR2,
+                         OUT_COD_RESPUESTA OUT NUMBER,
+                         OUT_MENSAJE OUT VARCHAR2) IS
+
+   l_error                VARCHAR2(2000);
+
+   l_reg_pago                 MPENGES.SPG_PAGO%ROWTYPE;
+   l_reg_cuenta_por_pagar     MPENGES.SPG_CUENTA_POR_PAGAR%ROWTYPE;
+   l_reg_solicitud            mpenges.spg_solicitud%ROWTYPE;
+   l_fuente_financiamiento    mnompen.Nomp_Fuente_Financiamiento.valor%TYPE;
+   l_nitPagadorPreli          MPENGES.SPG_CUENTA_POR_PAGAR.NIT_PAGADOR%type;
+   l_respuestaMotor           VARCHAR2(3000);
+   l_validacionMotorOk        NUMBER;
+   l_ejecutarMotor            VARCHAR2(2);
+   l_sysdate_pago             date;
+   l_nominaPensionadoId       MNOMPEN.NOMP_NOMINA_PENSIONADO.NOMINA_PENSIONADO_ID%TYPE;
+   l_rta_val_gpm              BOOLEAN;
+   l_cod_rta_val_gpm          VARCHAR2(2);
+  BEGIN
+    --DBMS_OUTPUT.PUT_LINE('------- ENTRO EJECUTAR APLICA PAGO LIQUIDACION -------');
+
+    OUT_COD_RESPUESTA := 0;
+    l_reg_pago := IN_REG_PAGO;
+    l_nitFsp               := TO_NUMBER(NVL(OBTENER_VALOR_GEN_PARAMETRO(C_FONDO_PENSION_OBLIG,C_MODULO_PENS_GESTION,C_PARAMETRO_NIT_FSP),0));
+    l_nombreFsp            := NVL(OBTENER_VALOR_GEN_PARAMETRO(C_FONDO_PENSION_OBLIG,C_MODULO_PENS_GESTION,C_PARAMETRO_NOMBRE_FSP),'');
+
+     -- SE OBTIENE EL REGISTRO DE LA CUENTA POR PAGAR
+     BEGIN
+        SELECT CXP.CUENTA_POR_PAGAR_ID,
+               CXP.SOLICITUD_ID,
+               CXP.CONSECUTIVO_ID,
+               CXP.BENEFICIARIO_ID,
+               CXP.PERSONA_ID,
+               CXP.ESTADO_CXP_ID,
+               CXP.VALOR_PESOS,
+               CXP.NIT_PAGADOR,
+               CXP.TIPO_PAGO_ID,
+               CXP.SOLICITUD_ID_BENEFICIO,
+               CXP.CUENTA_POR_COBRAR_ID
+         INTO  l_reg_cuenta_por_pagar.CUENTA_POR_PAGAR_ID,
+               l_reg_cuenta_por_pagar.SOLICITUD_ID,
+               l_reg_cuenta_por_pagar.CONSECUTIVO_ID,
+               l_reg_cuenta_por_pagar.BENEFICIARIO_ID,
+               l_reg_cuenta_por_pagar.PERSONA_ID,
+               l_reg_cuenta_por_pagar.ESTADO_CXP_ID,
+               l_reg_cuenta_por_pagar.VALOR_PESOS,
+               l_reg_cuenta_por_pagar.NIT_PAGADOR,
+               l_reg_cuenta_por_pagar.TIPO_PAGO_ID,
+               l_reg_cuenta_por_pagar.SOLICITUD_ID_BENEFICIO,
+               l_reg_cuenta_por_pagar.CUENTA_POR_COBRAR_ID
+        FROM MPENGES.SPG_CUENTA_POR_PAGAR CXP
+        WHERE CXP.CUENTA_POR_PAGAR_ID = l_reg_pago.CUENTA_POR_PAGAR_ID;
+     EXCEPTION WHEN OTHERS THEN
+       l_error := 'CUENTA_POR_PAGAR_ID = ' || l_reg_pago.CUENTA_POR_PAGAR_ID || ', ' || '[CONSULTANDO_CUENTA_POR_PAGAR] Error[' || SQLERRM ||
+      '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+       RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+     IF(l_reg_pago.eps_id IS NOT NULL)
+     THEN
+         BEGIN
+           SELECT E.NIT,E.DESCRIPCION
+           INTO  l_nitEps,l_nombreEps
+           FROM MPENGES.SPG_EPS E
+           WHERE E.EPS_ID=l_reg_pago.eps_id;
+         EXCEPTION WHEN OTHERS  THEN
+            l_nitEps :=0;
+            l_error := 'EPS_ID = ' || l_reg_pago.eps_id || ', ' || '[CONSULTANDO_EPS] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+         END;
+     ELSE
+       l_nitEps :=0;
+     END IF;
+
+     IF(l_reg_pago.CAJA_COMPENSACION_ID IS NOT NULL)
+     THEN
+         BEGIN
+           SELECT CA.NIT,CA.DESCRIPCION
+           INTO  l_nitCaja,l_nombreCaja
+           FROM MPENGES.SPG_CAJA_COMPENSACION CA
+           WHERE CA.CAJA_COMPENSACION_ID = l_reg_pago.CAJA_COMPENSACION_ID;
+
+         EXCEPTION WHEN OTHERS  THEN
+            l_nitCaja :=0;
+            l_error := 'CAJA_COMPENSACION_ID = ' || l_reg_pago.CAJA_COMPENSACION_ID || ', ' || '[CONSULTANDO_CAJA] Error[' || SQLERRM ||
+          '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+
+         END;
+     ELSE
+       l_nitCaja :=0;
+     END IF;
+
+     BEGIN
+       SELECT S.SOLICITUD_ID,
+              S.CUENTA_AFILIADO,
+              S.TIPO_RECLAMACION_ID,
+              S.ESTADO_RECLAMACION_ID,
+              S.SOLICITUD_ID_BENEFICIO,
+              S.CODIGO_RADICACION_REC
+       INTO   l_reg_solicitud.SOLICITUD_ID,
+              l_reg_solicitud.CUENTA_AFILIADO,
+              l_reg_solicitud.TIPO_RECLAMACION_ID,
+              l_reg_solicitud.ESTADO_RECLAMACION_ID,
+              l_reg_solicitud.SOLICITUD_ID_BENEFICIO,
+              l_reg_solicitud.CODIGO_RADICACION_REC
+       FROM MPENGES.SPG_SOLICITUD S
+       WHERE S.SOLICITUD_ID = l_reg_cuenta_por_pagar.solicitud_id;
+     EXCEPTION WHEN OTHERS THEN
+        l_error := 'SOLICITUD_ID = ' || l_reg_cuenta_por_pagar.solicitud_id || ', ' || '[CONSULTANDO_SOLICITUD] Error[' || SQLERRM ||
+      '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+       RAISE_APPLICATION_ERROR (-20001, l_error);
+     END;
+
+     BEGIN
+          SELECT NP.NOMINA_PENSIONADO_ID INTO l_nominaPensionadoId
+          FROM MPENGES.SPG_PAGO P ,
+              MPENGES.SPG_SOLICITUD S,
+              MPENGES.SPG_BENEFICIARIO B,
+              MPENGES.SPG_CUENTA_POR_PAGAR C,
+              MNOMPEN.NOMP_NOMINA_PENSIONADO NP
+          WHERE P.SOLICITUD_ID_BENEFICIO = S.SOLICITUD_ID
+          AND C.SOLICITUD_ID = S.SOLICITUD_ID
+          AND C.BENEFICIARIO_ID = B.BENEFICIARIO_ID
+          AND NP.SOLICITUD_ID = S.SOLICITUD_ID
+          AND NP.BENEFICIARIO_ID = B.BENEFICIARIO_ID
+          AND P.PAGO_ID = IN_REG_PAGO.pago_id
+          AND C.CUENTA_POR_PAGAR_ID = IN_REG_PAGO.cuenta_por_pagar_id;
+     EXCEPTION WHEN OTHERS THEN
+         l_nominaPensionadoId := 0;
+     END;
+
+   ---  DBMS_OUTPUT.PUT_LINE('------- VALIDA ESTADO DE LA CXP -------');
+
+     IF(l_reg_cuenta_por_pagar.ESTADO_CXP_ID NOT IN ('ANULADA','PAGADA'))
+     THEN
+         l_ejecutarMotor := OBTENER_VALOR_GEN_PARAMETRO(1,2400,'NOM_PARAM_EJEC_MOTOR_LIQ');
+         --Ejecuci¿¿n del Motor de validaciones de nomina
+         --DBMS_OUTPUT.PUT_LINE(IN_REG_PAGO.PAGO_ID||'-------ENTRO EJECUTAR MOTOR='||to_char(SYSDATE, 'YYYY-MM-DD HH24:MI.SS'));
+         IF (l_ejecutarMotor IN ('S')) THEN
+             MNOMPEN.NOMP_MOTOR_NOM_PENSIONADOS_PCK.INVOCAR_PROCESO(l_reg_solicitud.SOLICITUD_ID,
+                                                                    l_reg_cuenta_por_pagar.TIPO_PAGO_ID,
+                                                                    IN_REG_PAGO.Periodo,
+                                                                    'LIQ',
+                                                                    l_respuestaMotor);
+         --DBMS_OUTPUT.PUT_LINE(IN_REG_PAGO.PAGO_ID||'-------FIN EJECUTAR MOTOR='||to_char(SYSDATE, 'YYYY-MM-DD HH24:MI.SS'));
+         ELSE
+             l_respuestaMotor := 'BIEN';
+         END IF;
+
+       ---  DBMS_OUTPUT.PUT_LINE('------- RESPUESTA MOTOR -------' || l_respuestaMotor);
+         IF (l_respuestaMotor = 'BIEN') THEN
+
+            BEGIN
+              ---validar beneficiario nomina pensionado existe
+              SELECT COUNT(N.NOMINA_PENSIONADO_ID)
+                INTO l_validacionMotorOk
+                FROM MNOMPEN.NOMP_NOMINA_PENSIONADO N
+               WHERE N.ESTADO_NOMINA = 'ACTIVO'
+                 AND EXISTS
+               (SELECT R.Nomina_Pensionado_Id
+                        FROM MNOMPEN.NOMP_RESPUESTA_VALIDACION R, MNOMPEN.NOMP_DETALLE_RTA_VALIDACION D
+                       WHERE R.NOMINA_PENSIONADO_ID = N.NOMINA_PENSIONADO_ID
+                         AND R.RESPUESTA_VALIDACION_ID= D.RESPUESTA_VALIDACION_ID
+                         AND R.VALIDACION_SUSPENDIDO = 'N'
+                         AND D.ESTADO_VALIDACION = 'ACTIVO'
+                         AND D.CONFIGURACION_VALIDACION_ID IN (SELECT CONF.CONFIGURACION_VALIDACION_ID
+                                                               FROM MNOMPEN.NOMP_CONFIGURACION_VALIDACION CONF
+                                                               WHERE CONF.VAL_LIQUIDACION = 'S'))
+                 AND N.SOLICITUD_ID = l_reg_solicitud.SOLICITUD_ID
+                 AND N.NOMINA_PENSIONADO_ID = l_nominaPensionadoId
+                 AND rownum = 1;
+            EXCEPTION
+              WHEN NO_DATA_FOUND THEN
+                l_validacionMotorOk := 0;
+            END;
+
+           ---  DBMS_OUTPUT.PUT_LINE('------- VALIDO RESUALRADO DEL MOTOR --------- ');
+
+              IF(l_validacionMotorOk = 0)
+              THEN
+                   -- SE OBTIENE EL NIT DEL FONDO Y SOCIEDAD
+                  l_nitFondo             := TO_NUMBER(NVL(OBTENER_VALOR_GEN_PARAMETRO(C_FONDO_PENSION_OBLIG,C_MODULO_PENS_GESTION,C_PARAMETRO_FONDO),0));
+                  l_nitSociedad          := TO_NUMBER(NVL(OBTENER_VALOR_GEN_PARAMETRO(C_FONDO_PENSION_OBLIG,C_MODULO_PENS_GESTION,C_PARAMETRO_SOCIEDAD),0));
+
+                  -- Reinicia la variable cada vez que pase
+                  l_periodo_suspendido := TRUE;
+
+DECLARE
+   TYPE t_estados_tab IS TABLE OF VARCHAR2(30);
+   l_estados t_estados_tab;
+BEGIN
+   SELECT DP.ESTADO
+   BULK COLLECT INTO l_estados
+   FROM MPENGES.SPG_DETALLE_PAGO DP
+   WHERE DP.PAGO_ID = IN_REG_PAGO.pago_id
+     AND DP.PERIODO = IN_REG_PAGO.Periodo;
+
+   FOR i IN 1 .. l_estados.COUNT LOOP
+     IF l_estados(i) != 'SUSPENDIDO' THEN
+        l_periodo_suspendido := FALSE;
+        EXIT;
+     END IF;
+   END LOOP;
+END;
+
+                   IF l_periodo_suspendido = FALSE THEN
+
+                   -- Se valida si es GPM y se realiza la apropiaci¿¿¿¿n si es verdadero
+                   MNOMPEN.NOMP_PRELIQUIDACION_NOMINA_PCK.VAL_LIQUIDA_GPM(l_reg_solicitud.SOLICITUD_ID,
+                                                                          C_COD_OPER_RET_PROGRAMADO,
+                                                                          l_nominaPensionadoId,
+                                                                          IN_REG_PAGO.Periodo,
+                                                                          'N',
+                                                                          l_rta_val_gpm,
+                                                                          l_cod_rta_val_gpm);
+
+                    --   DBMS_OUTPUT.PUT_LINE('------- VALIDA GPM -------' || l_cod_rta_val_gpm);
+
+                   ELSE
+                    IF  l_reg_cuenta_por_pagar.nit_pagador = l_nitSociedad THEN
+                        l_cod_rta_val_gpm:= '05';
+                    ELSE
+                        l_cod_rta_val_gpm:= '00';
+                    END IF;
+                   END IF;
+
+                   BEGIN
+
+                       SELECT F.VALOR
+                       INTO   l_fuente_financiamiento
+                       FROM MNOMPEN.NOMP_PRELIQUIDACION_PAGO P,
+                            MNOMPEN.NOMP_FUENTE_FINANCIAMIENTO F
+                       WHERE F.FUENTE_FINANCIAMIENTO_ID = P.FUENTE_FINANCIAMIENTO
+                       AND   P.PAGO_ID = l_reg_pago.pago_id;
+
+                       l_nitPagadorPreli := to_number(l_fuente_financiamiento);
+
+                   EXCEPTION
+                      WHEN NO_DATA_FOUND THEN
+                          l_error := '-PAGO_ID['||IN_REG_PAGO.PAGO_ID||']. PAGO NO EXIXTE EN PRELIQUIDACION NOMINA , VER LOGS PARA MAS INFO.';
+                          RAISE_APPLICATION_ERROR (-20001, l_error);
+                   END;
+
+
+                   IF (l_cod_rta_val_gpm IS NOT NULL
+                       AND l_cod_rta_val_gpm NOT IN ('00','02','05','08')) THEN
+
+                       l_error := 'SOLICITUD_ID ['||l_reg_solicitud.SOLICITUD_ID||']-PAGO_ID['||IN_REG_PAGO.PAGO_ID||']. CASO GPM CON RESPUESTA DE APROPIACION ERRADA ['||l_cod_rta_val_gpm||'], VER LOGS PARA MAS INFO.';
+                       RAISE_APPLICATION_ERROR (-20001, l_error);
+
+                   ELSIF ((l_cod_rta_val_gpm IS NULL
+                           AND l_reg_cuenta_por_pagar.NIT_PAGADOR != l_nitSociedad)
+                           OR l_cod_rta_val_gpm  IN ('00','02','08'))
+                     THEN
+
+                    --  DBMS_OUTPUT.PUT_LINE('------- APLICA PAGO FONDO-------');
+
+                       APLICA_PAGO_FONDO(l_reg_solicitud,
+                                         l_reg_pago,
+                                         l_reg_cuenta_por_pagar,
+                                         l_nominaPensionadoId,
+                                         IN_USUARIO,
+                                         OUT_COD_RESPUESTA,
+                                         OUT_MENSAJE);
+
+                       IF l_reg_cuenta_por_pagar.nit_pagador != l_nitFondo
+                          THEN
+
+                             UPDATE MPENGES.SPG_CUENTA_POR_PAGAR C
+                             SET    C.NIT_PAGADOR = l_nitFondo,
+                                    C.USUARIO_ULTIMA_MODIFICACION = 'APLICA_PAGO_NOMINA',
+                                    C.FECHA_ULTIMA_MODIFICACION = l_sysdate_pago
+                             WHERE C.CUENTA_POR_PAGAR_ID = l_reg_cuenta_por_pagar.cuenta_por_pagar_id;
+
+                        END IF;
+
+                        IF l_nitPagadorPreli != l_nitFondo
+                           THEN
+
+                               UPDATE MNOMPEN.NOMP_PRELIQUIDACION_PAGO P
+                               SET    P.FUENTE_FINANCIAMIENTO = 3,
+                                      P.USUARIO_ULTIMA_MODIFICACION = 'APLICA_PAGO_NOMINA',
+                                      P.FECHA_ULTIMA_MODIFICACION = l_sysdate_pago
+                                WHERE P.PAGO_ID = l_reg_pago.pago_id;
+
+                         END IF;
+
+
+
+                   ELSIF (l_cod_rta_val_gpm IS NULL OR l_cod_rta_val_gpm = '05')
+                     THEN
+
+                  --   DBMS_OUTPUT.PUT_LINE('------- APLICA SOCIDAD-------');
+
+                      APLICA_PAGO_SOCIEDAD (l_reg_solicitud,
+                                           l_reg_pago,
+                                           l_reg_cuenta_por_pagar,
+                                           l_nominaPensionadoId,
+                                           IN_USUARIO,
+                                           OUT_COD_RESPUESTA,
+                                           OUT_MENSAJE);
+
+                        IF l_reg_cuenta_por_pagar.nit_pagador != l_nitSociedad
+                          THEN
+
+                             UPDATE MPENGES.SPG_CUENTA_POR_PAGAR C
+                             SET    C.NIT_PAGADOR = l_nitSociedad,
+                                    C.USUARIO_ULTIMA_MODIFICACION = 'APLICA_PAGO',
+                                    C.FECHA_ULTIMA_MODIFICACION = l_sysdate_pago
+                             WHERE C.CUENTA_POR_PAGAR_ID = l_reg_cuenta_por_pagar.cuenta_por_pagar_id;
+
+                        END IF;
+
+                        IF l_nitPagadorPreli != l_nitSociedad
+                           THEN
+
+                               UPDATE MNOMPEN.NOMP_PRELIQUIDACION_PAGO P
+                               SET    P.FUENTE_FINANCIAMIENTO = 4,
+                                      P.USUARIO_ULTIMA_MODIFICACION = 'APLICA_PAGO_NOMINA',
+                                      P.FECHA_ULTIMA_MODIFICACION = l_sysdate_pago
+                                WHERE P.PAGO_ID = l_reg_pago.pago_id;
+
+                         END IF;
+                   END IF;
+              ELSE
+                  l_error := 'SOLICITUD_ID ['||l_reg_solicitud.SOLICITUD_ID||']. VALIDACION(ES) INVALIDAS DEL MOTOR VALIDACIONES, VALIDAR LA RESPUESTA DEL MOTOR EN LA BASE DE DATOS';
+                  RAISE_APPLICATION_ERROR (-20001, l_error);
+              END IF;
+          ELSE
+              l_error := 'SOLICITUD_ID ['||l_reg_solicitud.SOLICITUD_ID||']. ERROR EN LA EJECUCION DEL MOTOR VALIDACIONES, VALIDAR LOG';
+              RAISE_APPLICATION_ERROR (-20001, l_error);
+          END IF;
+     ELSE
+         l_error := 'PAGO_ID ['||l_reg_pago.Pago_Id||'] - CUENTA POR PAGAR['||l_reg_cuenta_por_pagar.Cuenta_Por_Pagar_Id||'] EN ESTADO INVALIDO ['||l_reg_cuenta_por_pagar.ESTADO_CXP_ID||']';
+         RAISE_APPLICATION_ERROR (-20001, l_error);
+     END IF ;
+     --ACTUALIZAR NUMERO PAGOS REALIZADOS EN CXP
+     ACTUALIZAR_NUMERO_PAGOS(NULL,IN_USUARIO,l_reg_cuenta_por_pagar);
+
+  EXCEPTION WHEN OTHERS THEN
+    ROLLBACK;
+    OUT_MENSAJE := 'ERROR EN EL METODO [APLICA_PAGO] : '|| SQLERRM || '-' || l_error;
+    -- SI EL CODIGO DE RESPUESTA ES 2 SE DETIENE EL PROCESO
+    IF(OUT_COD_RESPUESTA = 2) THEN
+      OUT_COD_RESPUESTA := 1;
+      RAISE_APPLICATION_ERROR (-20002, OUT_MENSAJE);
+    ELSE
+      OUT_COD_RESPUESTA := 1;
+      IF(l_reg_cuenta_por_pagar.ESTADO_CXP_ID NOT IN ('ANULADA','PAGADA'))
+      THEN
+          ACTUALIZAR_CXP_ESTADO (l_reg_cuenta_por_pagar,'RECHAZADA');
+      END IF;
+      mpenges.spg_validador_pck.inserta_causal_error(user, l_reg_cuenta_por_pagar.cuenta_por_pagar_id, 'ERROR_APLICA_PAGO');
+      --ACTUALIZA ESTADO DETALLES DE PAGO A CON_ERROR
+      ACTUALIZAR_DETALLE_PAGO(NULL, NULL, IN_USUARIO, NULL, NULL, NULL,IN_REG_PAGO.PAGO_ID,NULL);
+      INSERTA_ERROR('PAGO', l_reg_pago.pago_lote_id, l_reg_cuenta_por_pagar.cuenta_por_pagar_id, OUT_MENSAJE);
+    END IF;
+  END APLICA_PAGO;
+END;
+
