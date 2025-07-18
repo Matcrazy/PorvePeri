@@ -1,0 +1,58 @@
+DECLARE
+
+      IN_PAGO_ID   NUMBER := 4488007;       -- ID de pago a actualizar
+      IN_USUARIO   VARCHAR2(12) := 'USR_TESTP'; -- Usuario periferia
+      l_sysdate_detalle DATE := SYSDATE;
+
+
+    TYPE t_detalle_ids_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.DETALLE_PAGO_ID%TYPE INDEX BY PLS_INTEGER;
+    TYPE t_scn_tab IS TABLE OF MPENGES.SPG_DETALLE_PAGO.MFONDOS_SCN%TYPE INDEX BY PLS_INTEGER;
+  
+    l_detalle_ids   t_detalle_ids_tab;
+    l_scn_values    t_scn_tab;
+            
+BEGIN 
+        
+    SELECT P.DETALLE_PAGO_ID, P.MFONDOS_SCN
+    BULK COLLECT INTO l_detalle_ids, l_scn_values
+    --FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C, MPENGES.Spg_Pago pg
+    FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C
+    WHERE P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+    AND C.TIPO_PAGO_ID= 'RETIRO_PROGRAMADO'
+    AND P.PAGO_ID = IN_PAGO_ID
+    --AND P.PAGO_ID = pg.pago_id
+    ORDER BY P.OPERACION_CONCEPTO_ID ASC;
+    
+    /*
+    -- MOSTRAR BULK COLLECT -- 
+    
+    FOR i IN l_detalle_ids.FIRST .. l_detalle_ids.LAST LOOP
+      DBMS_OUTPUT.put_line('DETALLE_PAGO_ID : ' || l_detalle_ids(i) || ' MFONDOS_SCN : ' || l_scn_values(i)) ;
+      END LOOP;
+      
+      EXCEPTION
+         WHEN OTHERS THEN
+           DBMS_OUTPUT.put_line('Error :' || SQLERRM);          
+    */
+    
+    -- ACTUALIZA VALORES DEL BULK COLLECT
+           
+    FORALL i IN INDICES OF l_detalle_ids
+        UPDATE MPENGES.SPG_DETALLE_PAGO DP
+        SET DP.ESTADO = 'ERROR',
+            DP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+            DP.FECHA_ULTIMA_MODIFICACION = l_sysdate_detalle,
+            DP.MFONDOS_SCN = l_scn_values(i) + 1
+        WHERE DP.DETALLE_PAGO_ID = l_detalle_ids(i);
+    
+    COMMIT;
+    
+    DBMS_OUTPUT.put_line('Update completado. Total registros :' || l_detalle_ids.COUNT);
+        
+    
+    EXCEPTION
+         WHEN OTHERS THEN
+           DBMS_OUTPUT.put_line('Error :' || SQLERRM); 
+           
+         
+END;
