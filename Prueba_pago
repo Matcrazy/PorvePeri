@@ -1,0 +1,32 @@
+DECLARE
+  IN_REG_PAGO MPENGES.SPG_PAGO%ROWTYPE;
+
+   TYPE t_estados_tab IS TABLE OF VARCHAR2(30);
+   l_estados t_estados_tab;
+   
+   l_periodo_suspendido BOOLEAN;
+   
+BEGIN
+
+   SELECT DP.ESTADO
+   BULK COLLECT INTO l_estados
+   FROM MPENGES.SPG_DETALLE_PAGO DP
+   WHERE DP.PAGO_ID = 4488007
+     AND DP.PERIODO = IN_REG_PAGO.Periodo;
+
+   FOR i IN 1 .. l_estados.COUNT LOOP
+     IF l_estados(i) != 'SUSPENDIDO' THEN
+        l_periodo_suspendido := FALSE;
+        EXIT;
+     END IF;
+   END LOOP;
+   
+   FOR i IN 1 .. l_estados.COUNT LOOP
+      DBMS_OUTPUT.put_line('ESTADO: ' || l_estados(i) ) ;
+      END LOOP;
+      
+      EXCEPTION
+         WHEN OTHERS THEN
+           DBMS_OUTPUT.put_line('Error :' || SQLERRM);  
+   
+END;
