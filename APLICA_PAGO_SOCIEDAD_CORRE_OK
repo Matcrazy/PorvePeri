@@ -1,0 +1,208 @@
+DECLARE 
+
+l_tipoIdentificacion   VARCHAR2(5);
+l_numeroIdentificacion VARCHAR2(15);
+
+l_global_pago_id                    mpenges.spg_detalle_pago.pago_id%type;
+l_reg_pago                          MPENGES.SPG_PAGO%ROWTYPE;
+l_reg_detalle_pago                  mpenges.spg_detalle_pago%ROWTYPE;
+l_reg_operacion_concepto            mpenges.spg_operacion_concepto%ROWTYPE;
+
+
+CURSOR OBTENER_DETALLE_PAGO (P_PAGO_ID IN NUMBER)
+   IS
+      SELECT P.DETALLE_PAGO_ID
+            , P.PAGO_ID
+            , P.OPERACION_CONCEPTO_ID
+            , P.VALOR_PESOS
+            , P.AFECTA_PAGO
+            , P.BENEFICIARIO_ID
+            , P.MEDIO_PAGO
+            , P.BANCO_ID
+            , P.TIPO_CUENTA
+            , P.CUENTA_BANCARIA
+            , P.OFICINA_PORVENIR_ID
+            , P.ESTADO
+            , P.ESTADO_SAAP
+            , P.CONSECUTIVO_PAGO
+            , P.ID_FACTURA
+            , P.FECHA_CREACION
+            , P.USUARIO_CREACION
+            , P.FECHA_ULTIMA_MODIFICACION
+            , P.USUARIO_ULTIMA_MODIFICACION
+            , P.ESTADO_ERP_ID
+            , P.NUMERO_ASIENTO_ID
+            , P.PERSONA_PAGO
+            , P.DESCUENTO_ADICIONAL_ID
+            , P.MODALIDAD_GIRO
+            , P.NUM_CHEQUE
+            , P.NUM_AUTORIZACION
+            , P.CUENTA_POR_COBRAR_ID
+            , P.PERIODO
+            , P.NUM_PAG_SEGURIDAD_SOCIAL
+            , P.MFONDOS_SCN
+            FROM  MPENGES.SPG_DETALLE_PAGO P, MPENGES.SPG_OPERACION_CONCEPTO C
+            WHERE P.OPERACION_CONCEPTO_ID = C.OPERACION_CONCEPTO_ID
+            AND C.TIPO_PAGO_ID= 'RETIRO_PROGRAMADO'
+            AND P.PAGO_ID = 4488007
+            ORDER BY P.OPERACION_CONCEPTO_ID ASC; 
+            
+    TYPE t_detalle_pago_tab IS TABLE OF OBTENER_DETALLE_PAGO%ROWTYPE;
+    l_detalle_pago_tab t_detalle_pago_tab;
+    
+    CUR_DETALLE_PAGO OBTENER_DETALLE_PAGO%ROWTYPE;
+    
+
+BEGIN
+  
+          -- BULK COLLECT para reemplazo de cursor
+    OPEN OBTENER_DETALLE_PAGO(l_reg_pago.pago_id);
+    FETCH OBTENER_DETALLE_PAGO BULK COLLECT INTO l_detalle_pago_tab;
+    CLOSE OBTENER_DETALLE_PAGO;   
+
+
+    FOR i IN 1 .. l_detalle_pago_tab.COUNT LOOP
+        CUR_DETALLE_PAGO := l_detalle_pago_tab(i);
+
+            -- OBTIENE EL REGISTRO DE DETALLE DE PAGO
+              l_reg_detalle_pago.DETALLE_PAGO_ID := CUR_DETALLE_PAGO.DETALLE_PAGO_ID            ;
+              l_reg_detalle_pago.PAGO_ID := CUR_DETALLE_PAGO.PAGO_ID                    ;
+              l_reg_detalle_pago.OPERACION_CONCEPTO_ID := CUR_DETALLE_PAGO.OPERACION_CONCEPTO_ID      ;
+              l_reg_detalle_pago.VALOR_PESOS := CUR_DETALLE_PAGO.VALOR_PESOS                ;
+              l_reg_detalle_pago.AFECTA_PAGO := CUR_DETALLE_PAGO.AFECTA_PAGO                ;
+              l_reg_detalle_pago.BENEFICIARIO_ID := CUR_DETALLE_PAGO.BENEFICIARIO_ID            ;
+              l_reg_detalle_pago.MEDIO_PAGO := CUR_DETALLE_PAGO.MEDIO_PAGO                 ;
+              l_reg_detalle_pago.BANCO_ID := CUR_DETALLE_PAGO.BANCO_ID                   ;
+              l_reg_detalle_pago.TIPO_CUENTA := CUR_DETALLE_PAGO.TIPO_CUENTA                ;
+              l_reg_detalle_pago.CUENTA_BANCARIA := CUR_DETALLE_PAGO.CUENTA_BANCARIA            ;
+              l_reg_detalle_pago.OFICINA_PORVENIR_ID := CUR_DETALLE_PAGO.OFICINA_PORVENIR_ID        ;
+              l_reg_detalle_pago.ESTADO := CUR_DETALLE_PAGO.ESTADO                     ;
+              l_reg_detalle_pago.ESTADO_SAAP := CUR_DETALLE_PAGO.ESTADO_SAAP                ;
+              l_reg_detalle_pago.CONSECUTIVO_PAGO := CUR_DETALLE_PAGO.CONSECUTIVO_PAGO           ;
+              l_reg_detalle_pago.ID_FACTURA := CUR_DETALLE_PAGO.ID_FACTURA                 ;
+              l_reg_detalle_pago.FECHA_CREACION := CUR_DETALLE_PAGO.FECHA_CREACION             ;
+              l_reg_detalle_pago.USUARIO_CREACION := CUR_DETALLE_PAGO.USUARIO_CREACION           ;
+              l_reg_detalle_pago.FECHA_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.FECHA_ULTIMA_MODIFICACION  ;
+              l_reg_detalle_pago.USUARIO_ULTIMA_MODIFICACION := CUR_DETALLE_PAGO.USUARIO_ULTIMA_MODIFICACION;
+              l_reg_detalle_pago.ESTADO_ERP_ID := CUR_DETALLE_PAGO.ESTADO_ERP_ID              ;
+              l_reg_detalle_pago.NUMERO_ASIENTO_ID := CUR_DETALLE_PAGO.NUMERO_ASIENTO_ID          ;
+              l_reg_detalle_pago.PERSONA_PAGO := CUR_DETALLE_PAGO.PERSONA_PAGO               ;
+              l_reg_detalle_pago.DESCUENTO_ADICIONAL_ID := CUR_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID     ;
+              l_reg_detalle_pago.MODALIDAD_GIRO := CUR_DETALLE_PAGO.MODALIDAD_GIRO             ;
+              l_reg_detalle_pago.NUM_CHEQUE := CUR_DETALLE_PAGO.NUM_CHEQUE                 ;
+              l_reg_detalle_pago.NUM_AUTORIZACION := CUR_DETALLE_PAGO.NUM_AUTORIZACION           ;
+              l_reg_detalle_pago.CUENTA_POR_COBRAR_ID := CUR_DETALLE_PAGO.CUENTA_POR_COBRAR_ID       ;
+              l_reg_detalle_pago.PERIODO := CUR_DETALLE_PAGO.PERIODO                    ;
+              l_reg_detalle_pago.NUM_PAG_SEGURIDAD_SOCIAL := CUR_DETALLE_PAGO.NUM_PAG_SEGURIDAD_SOCIAL   ;
+              l_reg_detalle_pago.MFONDOS_SCN := CUR_DETALLE_PAGO.MFONDOS_SCN  ;
+              
+              
+              /*
+              IF (CUR_DETALLE_PAGO.ESTADO IN ('SUSPENDIDO')) THEN
+
+                 PAGOS_SUSPENDIDOS ( l_reg_cuenta_por_pagar,
+                                     l_reg_pago,
+                                     l_reg_detalle_pago,
+                                     IN_USUARIO);
+
+                 ACTUALIZAR_NOMINA_PENSIONADO(IN_REG_PAGO,
+                                              IN_NOMINA_PENSIONADO_ID,
+                                              IN_USUARIO);
+
+         ELSIF CUR_DETALLE_PAGO.ESTADO IN ('APROBADO') THEN
+
+            -- DBMS_OUTPUT.PUT_LINE('------- APLICA PAGO SOCIEDAD  ESTADO LOTE -------');
+           -- OBTENER OPERACI¿¿N CONCEPTO
+              BEGIN
+                   SELECT con.operacion_concepto_id,
+                          con.descuenta,
+                          con.caja_pago,
+                          con.codigo_operacion_id,
+                          con.operacion,
+                          con.principal,
+                          con.descripcion_contable
+                   INTO l_reg_operacion_concepto.Operacion_Concepto_Id,
+                   l_reg_operacion_concepto.Descuenta,
+                   l_reg_operacion_concepto.Caja_Pago,
+                   l_reg_operacion_concepto.Codigo_Operacion_Id,
+                   l_reg_operacion_concepto.operacion,
+                   l_reg_operacion_concepto.principal,
+                   l_reg_operacion_concepto.descripcion_contable
+                   FROM mpenges.spg_operacion_concepto con
+                   WHERE con.operacion_concepto_id =  l_reg_detalle_pago.OPERACION_CONCEPTO_ID
+                   AND  con.tipo_pago_id = l_reg_pago.tipo_pago_id;
+
+             EXCEPTION
+              WHEN OTHERS THEN
+
+                l_error := 'PAGO_ID = ' || l_reg_pago.pago_id || ', OPERACION_CONCEPTO_ID = ' || l_reg_detalle_pago.OPERACION_CONCEPTO_ID || '[CONSULTANDO_OPERACION_CONCEPTO] Error[' || SQLERRM ||
+                '] Traza[' || dbms_utility.format_error_backtrace || ']' ;
+                RAISE_APPLICATION_ERROR (-20001, l_error);
+
+             END;
+             */
+             
+        END LOOP;
+        
+        
+        
+      -- MOSTRAR BULK COLLECT -- 
+    
+              FOR i IN l_detalle_pago_tab.FIRST .. l_detalle_pago_tab.LAST LOOP
+                CUR_DETALLE_PAGO := l_detalle_pago_tab(i);
+                
+                DBMS_OUTPUT.put_line('DETALLE_PAGO_ID : '                     || CUR_DETALLE_PAGO.DETALLE_PAGO_ID ||
+                                    ' PAGO_ID : '                             || CUR_DETALLE_PAGO.PAGO_ID || 
+                                    ' PAGO.OPERACION_CONCEPTO_ID : '          || CUR_DETALLE_PAGO.OPERACION_CONCEPTO_ID || 
+                                    ' VALOR_PESOS : '                         || CUR_DETALLE_PAGO.VALOR_PESOS || 
+                                    ' AFECTA_PAGO : '                         || CUR_DETALLE_PAGO.AFECTA_PAGO || 
+                                    ' BENEFICIARIO_ID : '                     || CUR_DETALLE_PAGO.BENEFICIARIO_ID ||
+                                    ' MEDIO_PAGO : '              	          || CUR_DETALLE_PAGO.MEDIO_PAGO ||
+                                    ' BANCO_ID : '                            || CUR_DETALLE_PAGO.BANCO_ID ||
+                                    ' TIPO_CUENTA : '                         || CUR_DETALLE_PAGO.TIPO_CUENTA ||
+                                    ' CUENTA_BANCARIA : '                     || CUR_DETALLE_PAGO.CUENTA_BANCARIA ||
+                                    ' OFICINA_PORVENIR_ID : '                 || CUR_DETALLE_PAGO.OFICINA_PORVENIR_ID ||
+                                    ' ESTADO : '                              || CUR_DETALLE_PAGO.ESTADO ||
+                                    ' ESTADO_SAAP : '                         || CUR_DETALLE_PAGO.ESTADO_SAAP ||
+                                    ' CONSECUTIVO_PAGO : '                    || CUR_DETALLE_PAGO.CONSECUTIVO_PAGO ||
+                                    ' ID_FACTURA : '                          || CUR_DETALLE_PAGO.ID_FACTURA ||
+                                    ' FECHA_CREACION : '                      || CUR_DETALLE_PAGO.FECHA_CREACION ||
+                                    ' USUARIO_CREACION : '                    || CUR_DETALLE_PAGO.USUARIO_CREACION ||
+                                    ' FECHA_ULTIMA_MODIFICACION : '           || CUR_DETALLE_PAGO.FECHA_ULTIMA_MODIFICACION ||
+                                    ' USUARIO_ULTIMA_MODIFICACION : '         || CUR_DETALLE_PAGO.USUARIO_ULTIMA_MODIFICACION ||
+                                    ' ESTADO_ERP_ID : '                       || CUR_DETALLE_PAGO.ESTADO_ERP_ID ||
+                                    ' NUMERO_ASIENTO_ID : '                   || CUR_DETALLE_PAGO.NUMERO_ASIENTO_ID ||
+                                    ' PERSONA_PAGO : '                        || CUR_DETALLE_PAGO.PERSONA_PAGO ||
+                                    ' DESCUENTO_ADICIONAL_ID : '              || CUR_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID ||
+                                    ' MODALIDAD_GIRO : '                      || CUR_DETALLE_PAGO.MODALIDAD_GIRO ||
+                                    ' NUM_CHEQUE : '                          || CUR_DETALLE_PAGO.NUM_CHEQUE ||
+                                    ' NUM_AUTORIZACION : '                    || CUR_DETALLE_PAGO.NUM_AUTORIZACION ||
+                                    ' CUENTA_POR_COBRAR_ID : '                || CUR_DETALLE_PAGO.CUENTA_POR_COBRAR_ID ||
+                                    ' CUR_DETALLE_PAGO : '                    || CUR_DETALLE_PAGO.PERIODO ||
+                                    ' NUM_PAG_SEGURIDAD_SOCIA : '             || CUR_DETALLE_PAGO.NUM_PAG_SEGURIDAD_SOCIAL ||
+                                    ' MFONDOS_SCN : '                         || CUR_DETALLE_PAGO.MFONDOS_SCN) ;
+              END LOOP;
+                
+              EXCEPTION
+                 WHEN OTHERS THEN
+                   DBMS_OUTPUT.put_line('Error :' || SQLERRM);
+              
+        
+        
+        
+        
+/*
+   END IF;
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF(l_detenerProceso) THEN
+        OUT_COD_RESPUESTA := 2;
+      ELSE
+        OUT_COD_RESPUESTA := 1;
+      END IF;
+    OUT_MENSAJE := 'ERROR EN EL METODO [APLICA_PAGO_FONDO] : '|| SQLERRM || '-' || l_error;
+    RAISE_APPLICATION_ERROR (-20001, OUT_MENSAJE);
+    -- ESCRIBIR EN LA TABLA DE ERRORES;
+    
+    */
+ END;
