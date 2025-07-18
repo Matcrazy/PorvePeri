@@ -1,0 +1,118 @@
+PROCEDURE EJECUTAR_LIQUIDACION(IN_PAGINA_ID IN NUMBER,
+                                 IN_USUARIO IN VARCHAR2,
+                                 OUT_COD_RESPUESTA OUT NUMBER,
+                                 OUT_MENSAJE OUT VARCHAR2)    
+  IS 
+    l_pagoIdInicio     NUMBER;
+    l_pagoIdFinal      NUMBER;
+    l_regProcesados    NUMBER :=0;
+    l_regConError      NUMBER :=0;
+    l_codRespuesta     NUMBER;
+    l_mensajeRespuesta VARCHAR2(2000);
+    l_regPaginacion    MNOMPEN.NOMP_BAT_PAGINACION%ROWTYPE;
+    l_reg_pago         MPENGES.SPG_PAGO%ROWTYPE;
+    l_observacion      VARCHAR2(2000);
+    l_pagoLoteId       NUMBER;
+    l_estadoPagina     MNOMPEN.NOMP_BAT_PAGINACION.ESTADO_PAGINACION_ID%TYPE;
+    
+    CURSOR CUR_PAGINACION_PAGOS(p_pagoIdInicio IN NUMBER,p_pagoIdFinal IN NUMBER)
+    IS
+        SELECT P.PAGO_ID,
+               P.CUENTA_POR_PAGAR_ID,
+               P.TIPO_PAGO_ID,
+               P.VALOR_PESOS_TOTAL,
+               P.FECHA_PAGO,
+               P.EPS_ID,
+               P.PORCENTAJE_EPS,
+               P.CAJA_COMPENSACION_ID,
+               P.ESTADO_OFICINA,
+               P.PAGO_LOTE_ID,
+               P.SOLICITUD_ID_BENEFICIO,
+               P.PERIODO,
+               P.PROCESO
+        FROM MPENGES.SPG_PAGO P
+        WHERE P.PAGO_ID BETWEEN p_pagoIdInicio AND p_pagoIdFinal
+        AND P.TIPO_PAGO_ID = C_TIPO_PAGO_RET_PROGRAMADO;
+  BEGIN
+        DBMS_OUTPUT.PUT_LINE('-------ENTRO EJECUTAR LIQUIDACION PAQUETE ='||to_char(SYSDATE, 'YYYY-MM-DD HH24_MI_SS'));
+    OUT_COD_RESPUESTA:=0;
+    l_observacion := NULL;
+    l_regPaginacion.Paginacion_Id := IN_PAGINA_ID;
+    l_regPaginacion.Fecha_Inicio_Exe := SYSDATE;
+    l_regPaginacion.Estado_Paginacion_Id := C_ESTADO_PAG_EN_PROCESO;
+    
+       BEGIN
+         SELECT NP.ID_INICIO,NP.ID_FIN,NP.ESTADO_PAGINACION_ID 
+         INTO l_pagoIdInicio,l_pagoIdFinal,l_estadoPagina
+         FROM MNOMPEN.NOMP_BAT_PAGINACION NP
+         WHERE NP.PAGINACION_ID = IN_PAGINA_ID FOR UPDATE;
+       EXCEPTION WHEN NO_DATA_FOUND THEN
+           RAISE_APPLICATION_ERROR (-20001, 'PAGINACION CON EL ID ['||IN_PAGINA_ID||'] NO EXISTE  : '|| SQLERRM);
+       END; 
+       
+       DBMS_OUTPUT.PUT_LINE(' Estado de la Pagina = '|| l_estadoPagina || ' - Estado correcto a procesar 1 - ' || 'Numero de Paguina' ||IN_PAGINA_ID);
+       
+       IF(l_estadoPagina = C_ESTADO_PAG_NUEVO) THEN
+           --ACTUALIZAR ESTADO DE PAGINA A EN_PROCESO
+           ACTUALIZAR_PAGINACION(l_regPaginacion, l_observacion, IN_USUARIO);
+          
+       -- DBMS_OUTPUT.PUT_LINE('------- ENTRO EJECUTAR LIQUIDACION PAQUETE actualizar estado pagina -------');
+           
+           --LIQUIDACION DE CADA UNO DE LOS PAGOS DE LA PAGINA SUMINISTRADA
+        ---    DBMS_OUTPUT.PUT_LINE(l_pagoIdInicio || '  -  ' || l_pagoIdFinal );
+            
+           FOR REG_PAGO IN CUR_PAGINACION_PAGOS(l_pagoIdInicio,l_pagoIdFinal)
+           LOOP
+               l_reg_pago.PAGO_ID               := REG_PAGO.PAGO_ID;
+               l_reg_pago.CUENTA_POR_PAGAR_ID   := REG_PAGO.CUENTA_POR_PAGAR_ID;
+               l_reg_pago.TIPO_PAGO_ID          := REG_PAGO.TIPO_PAGO_ID;
+               l_reg_pago.VALOR_PESOS_TOTAL     := REG_PAGO.VALOR_PESOS_TOTAL;
+               l_reg_pago.FECHA_PAGO            := REG_PAGO.FECHA_PAGO;
+               l_reg_pago.EPS_ID                := REG_PAGO.EPS_ID;
+               l_reg_pago.PORCENTAJE_EPS        := REG_PAGO.PORCENTAJE_EPS;
+               l_reg_pago.CAJA_COMPENSACION_ID  := REG_PAGO.CAJA_COMPENSACION_ID;
+               l_reg_pago.ESTADO_OFICINA        := REG_PAGO.ESTADO_OFICINA;
+               l_reg_pago.PAGO_LOTE_ID          := REG_PAGO.PAGO_LOTE_ID;
+               l_reg_pago.SOLICITUD_ID_BENEFICIO:= REG_PAGO.SOLICITUD_ID_BENEFICIO;
+               l_reg_pago.PERIODO               := REG_PAGO.PERIODO;
+               l_reg_pago.PROCESO               := REG_PAGO.PROCESO;
+               
+             --  DBMS_OUTPUT.PUT_LINE('------- ENTRO EJECUTAR LIQUIDACION PAQUETE Consulta Pago por limite inicial y final -------');
+             --  DBMS_OUTPUT.PUT_LINE(REG_PAGO.PAGO_ID );
+                              
+               --APLICA_PAGO (LIQUIDACION)
+               MNOMPEN.NOMP_LIQUIDACION_NOMINA_PCK.APLICA_PAGO(l_reg_pago, IN_USUARIO,l_codRespuesta,l_mensajeRespuesta);
+               
+              -- DBMS_OUTPUT.PUT_LINE(l_codRespuesta);
+               
+               IF(l_codRespuesta = 0)
+               THEN
+                   l_regProcesados := l_regProcesados + 1;
+               ELSE
+                   l_regConError := l_regConError + 1;
+               END IF; 
+               -- ACTUALIZAR EL CAMPO DE REGISTROS PROCESADOS O CON ERROR DE LA PAGINACION
+               l_regPaginacion.Procesados := l_regProcesados;
+               l_regPaginacion.Con_Error := l_regConError;
+               ACTUALIZAR_PAGINACION(l_regPaginacion,l_observacion,IN_USUARIO);
+               l_pagoLoteId := l_reg_pago.PAGO_LOTE_ID;
+           END LOOP;   
+           ACTUALIZAR_ESTADO_LOTE(IN_PAGINA_ID,IN_USUARIO);       
+           -- ACTUALIZAR EL ESTADO Y LA FECHA DE FINALIZACION DE LIQUIDACION DE LA PAGINA
+           l_regPaginacion.Fecha_Fin_Exe := SYSDATE;
+           l_regPaginacion.Estado_Paginacion_Id := C_ESTADO_PAG_TERMINADO;
+           ACTUALIZAR_PAGINACION(l_regPaginacion,l_observacion,IN_USUARIO);
+       ELSE
+         COMMIT; -- FIN DE LA TRANSACCION DEL SELECT FOR UPDATE   
+          --  DBMS_OUTPUT.PUT_LINE('------- COMMIT FIN -------');
+       END IF;    
+       DBMS_OUTPUT.PUT_LINE('-------FIN EJECUTAR LIQUIDACION='||to_char(SYSDATE, 'YYYY-MM-DD HH24_MI_SS'));
+  EXCEPTION WHEN OTHERS THEN
+    OUT_COD_RESPUESTA := 1;
+    OUT_MENSAJE := 'ERROR EN EL METODO [EJECUTAR_LIQUIDACION] : '|| SQLERRM;
+    -- ACTUALIZAR EL ESTADO CON ERROR Y LA FECHA DE FINALIZACION DE LIQUIDACION DE LA PAGINA
+     l_regPaginacion.Fecha_Fin_Exe := SYSDATE;
+     l_regPaginacion.Estado_Paginacion_Id := C_ESTADO_PAG_ERROR_EJECUCION;
+     l_observacion := OUT_MENSAJE;
+     ACTUALIZAR_PAGINACION(l_regPaginacion,l_observacion, IN_USUARIO);
+  END EJECUTAR_LIQUIDACION;
