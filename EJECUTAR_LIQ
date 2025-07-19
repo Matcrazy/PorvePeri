@@ -1,0 +1,1858 @@
+CREATE OR REPLACE PACKAGE BODY MNOMPEN.NOMP_PROCESO_NOMINA_PCK is
+
+  C_PROCESO_PRELIQUIDACION CONSTANT NUMBER(1) DEFAULT 1;
+  C_PROCESO_LIQUIDACION CONSTANT NUMBER(1) DEFAULT 2;
+  C_PROCESO_PAGO_SAAP    CONSTANT NUMBER(1) DEFAULT 3;
+  C_ESTADO_APROBADO   CONSTANT VARCHAR2(10) DEFAULT 'APROBADO';
+  C_ESTADO_AUTORIZADO  CONSTANT VARCHAR2(10) DEFAULT 'AUTORIZADO';
+  C_ESTADO_LIQUIDADO  CONSTANT VARCHAR2(10) DEFAULT 'LIQUIDADO';
+  C_ESTADO_SUSPENDIDO   CONSTANT VARCHAR2(10) DEFAULT 'SUSPENDIDO';
+  C_TIPO_PAGO_RET_PROGRAMADO   CONSTANT VARCHAR2(20) DEFAULT 'RETIRO_PROGRAMADO';
+  C_TIPO_PAGO_PROVISIONAL   CONSTANT VARCHAR2(20) DEFAULT 'PAGO_PROVISIONAL';
+  C_OPERACION_DESC_ADICIONAL   CONSTANT VARCHAR2(20) DEFAULT 'DESCUENTO_ADICIONAL';
+  C_TIPO_DESC_ADIC_EMBARGO   CONSTANT VARCHAR2(20) DEFAULT 'EMBARGO';
+  C_ESTADO_PAG_NUEVO      CONSTANT NUMBER(1) DEFAULT 1;
+  C_ESTADO_PAG_EN_PROCESO CONSTANT NUMBER(1) DEFAULT 2;
+  C_ESTADO_PAG_TERMINADO  CONSTANT NUMBER(1) DEFAULT 3;
+  C_ESTADO_PAG_ERROR_EJECUCION CONSTANT NUMBER(1) DEFAULT 4;
+  C_ESTADO_PAGADO   CONSTANT VARCHAR2(10) DEFAULT 'PAGADO';
+  C_ESTADO_PAGADO_PARCIAL  CONSTANT VARCHAR2(20) DEFAULT 'PAGADO_PARCIAL';
+  C_ESTADO_PENDIENTE_SAAP  CONSTANT PLS_INTEGER := 1;
+  C_ESTADO_SAAP_NUEVO CONSTANT VARCHAR2(20) DEFAULT 'NUEVO';
+  C_ESTADO_SAAP_PAGINADO CONSTANT VARCHAR2(20) DEFAULT 'PAGINADO';
+  
+  C_CICLO_INICIALIZANDO_PROCESO CONSTANT VARCHAR2(30) DEFAULT 'INICIALIZANDO_PROCESO';
+  C_CICLO_INICIAR_CICLO     CONSTANT VARCHAR2(30) DEFAULT 'INICIAR_CICLO';
+  C_CICLO_FINALIZAR_PROCESO CONSTANT VARCHAR2(30) DEFAULT 'FINALIZAR_PROCESO';
+  C_CICLO_ABORTA_INTERNO_PROC    CONSTANT VARCHAR2(30) DEFAULT 'ABORTA_INTERNO_PROCESO';
+  
+  C_ESTADO_AGENDA_REGISTRADO  CONSTANT VARCHAR2(30) DEFAULT 'REGISTRADO';
+  C_ESTADO_AGENDA_EJECUTANDO  CONSTANT VARCHAR2(30) DEFAULT 'EJECUTANDO';
+  C_ESTADO_AGENDA_ABORTADO    CONSTANT VARCHAR2(30) DEFAULT 'ABORTADO';
+  C_ESTADO_AGENDA_TERMINADO   CONSTANT VARCHAR2(30) DEFAULT 'TERMINADO';
+  
+  C_FUENTE_PAGO_FONDO CONSTANT NUMBER DEFAULT 8002248088;
+  C_FUENTE_PAGO_SOCIEDAD CONSTANT NUMBER DEFAULT 8001443313;
+  
+  v_periodo          NUMBER(6);
+
+/* Autor  : POR07096
+  * Fecha Creaci?n  : Septiembre de 2020
+  * Descrici?n : Proceso que construye la consulta para obtener los pagos Id 
+  * para registrar las paginas segun el rango de registros parametrizados.
+  */
+  PROCEDURE PAGINAR_PROCESO_SP(IN_PROCESO_ID IN NUMBER,
+                               OUT_COD_RESPUESTA OUT NUMBER,
+                               OUT_MENSAJE OUT VARCHAR2)
+  IS
+    
+    v_sql_subquery_pag VARCHAR2(32000);
+    v_sql_query_pag    VARCHAR2(32000);
+    v_longitud_pagina  NUMBER := 0;
+    v_longitud         NUMBER := 0;
+    v_it               NUMBER := 0;
+    --v_esExtranjero     NUMBER := 0;
+    
+    --Cursor encargado de obtener los banco_id de la tabla temporal.      
+    CURSOR cur_bancos (c_periodo IN NUMBER)IS
+                     
+      SELECT UNIQUE(s.banco_id)
+        FROM mnompen.nomp_pagos_saap_tmp s
+        WHERE s.banco_id is not null
+        AND s.estado = 'NUEVO' 
+        AND s.periodo = c_periodo
+       ORDER BY s.banco_id ASC;
+         
+  BEGIN
+    OUT_COD_RESPUESTA := 0;
+    v_periodo := TO_CHAR(SYSDATE,'YYYYMM');
+    --DBMS_OUTPUT.put_line('INICIO PAGINACION -->'|| SYSDATE);
+    IF IN_PROCESO_ID = C_PROCESO_PRELIQUIDACION THEN
+      NULL;
+    ELSIF IN_PROCESO_ID = C_PROCESO_LIQUIDACION THEN
+        
+        --DBMS_OUTPUT.put_line(v_periodo);
+        
+          v_sql_query_pag := 'SELECT PAGO_ID
+                              FROM (SELECT P.PAGO_ID, row_number() over(ORDER BY P.PAGO_ID ASC) LINE_NUMBER
+                              FROM MPENGES.SPG_PAGO P, MPENGES.SPG_PAGO_LOTE L, MNOMPEN.NOMP_PRELIQUIDACION_PAGO PRE, MNOMPEN.NOMP_ENCA_TOTAL_PAGOS E
+                              WHERE P.PAGO_LOTE_ID = L.PAGO_LOTE_ID
+                              AND L.ESTADO = '''||C_ESTADO_APROBADO||''' 
+                              AND PRE.PAGO_ID = P.PAGO_ID
+                              AND PRE.TOTAL_PAGOS_ID = E.TOTAL_PAGOS_ID
+                              AND E.ESTADO = '''||C_ESTADO_LIQUIDADO||''' 
+                              AND PRE.ESTADO_PRELIQUIDACION IN ( '''||C_ESTADO_APROBADO||''' , '''||C_ESTADO_SUSPENDIDO||''')
+                              AND P.TIPO_PAGO_ID = '''||C_TIPO_PAGO_RET_PROGRAMADO||''' 
+                              AND P.PERIODO = '||v_periodo||') WHERE (';
+
+        
+          SELECT COUNT(P.PAGO_ID)
+          INTO v_longitud
+          FROM MPENGES.SPG_PAGO P, 
+          MPENGES.SPG_PAGO_LOTE L , MNOMPEN.NOMP_PRELIQUIDACION_PAGO PRE, MNOMPEN.NOMP_ENCA_TOTAL_PAGOS E
+          WHERE P.PAGO_LOTE_ID = L.PAGO_LOTE_ID
+          AND L.ESTADO = C_ESTADO_APROBADO
+          AND PRE.PAGO_ID = P.PAGO_ID
+          AND PRE.TOTAL_PAGOS_ID = E.TOTAL_PAGOS_ID
+          AND E.ESTADO = C_ESTADO_LIQUIDADO
+          AND PRE.ESTADO_PRELIQUIDACION IN (C_ESTADO_APROBADO, C_ESTADO_SUSPENDIDO)
+          AND P.TIPO_PAGO_ID = C_TIPO_PAGO_RET_PROGRAMADO
+          AND P.PERIODO = v_periodo;
+
+                   
+          /*BEGIN
+             EXECUTE IMMEDIATE  'SELECT COUNT(P.PAGO_LOTE_ID) 
+                                  FROM MPENGES.SPG_PAGO_LOTE L , 
+                                       MPENGES.SPG_PAGO P,
+                                       MPENGES.SPG_DETALLE_PAGO DP
+                                   WHERE P.PAGO_LOTE_ID =L.PAGO_LOTE_ID
+                                    AND DP.PAGO_ID = P.PAGO_ID
+                                    AND DP.MEDIO_PAGO = ''E''                                    
+                                    GROUP BY L.PAGO_LOTE_ID'  INTO v_esExtranjero;
+          EXCEPTION WHEN OTHERS THEN
+             v_esExtranjero:=0;
+          END;  
+          --Si el lote pertenece a pagos de extrajero se setea el valor para que cree una sola pagina
+          IF(v_esExtranjero > 0)
+          THEN
+              v_longitud_pagina := v_longitud;
+          ELSE  */
+              v_longitud_pagina := MNOMPEN.NOMP_LIQUIDACION_NOMINA_PCK.OBTENER_VALOR_GEN_PARAMETRO(1,2400,'NOM_PARAM_LONG_PAG');
+          --END IF;
+          v_it := 0 ;
+          v_sql_subquery_pag := '';  
+          BEGIN
+            LOOP
+              IF v_it <> 0 THEN
+                v_sql_subquery_pag := v_sql_subquery_pag || ' OR ';
+              END IF;
+              v_sql_subquery_pag := v_sql_subquery_pag || 'LINE_NUMBER = ' ||
+                                    TO_CHAR(v_it + 1);
+              v_it               := v_it + v_longitud_pagina;
+              IF v_it > v_longitud THEN
+                v_sql_subquery_pag := v_sql_subquery_pag || ' OR LINE_NUMBER = ' ||
+                                      TO_CHAR((v_it - v_longitud_pagina) +
+                                              MOD(v_longitud, v_longitud_pagina));
+                EXIT;
+              ELSE
+                v_sql_subquery_pag := v_sql_subquery_pag || ' OR LINE_NUMBER = ' ||
+                                      TO_CHAR(v_it);
+              END IF;
+            END LOOP;
+            v_sql_query_pag := v_sql_query_pag || v_sql_subquery_pag ||
+                               ') ORDER BY LINE_NUMBER ';
+          END;
+     -- dbms_output.put_line('v_esExtranjero='||v_esExtranjero||' - Consulta='||v_sql_query_pag);
+
+          EXECUTE IMMEDIATE 'DECLARE
+                                    id_inicio          NUMBER;
+                                    id_fin             NUMBER;
+                                    index_it           NUMBER := 1;
+                                    cont               NUMBER := 0;
+                                    cant_reg           NUMBER := 0;
+                             BEGIN
+                                  FOR it IN ('||v_sql_query_pag||') LOOP
+                                    cant_reg := cant_reg + 1;
+                                    IF index_it = 1 THEN
+                                      id_inicio := it.PAGO_ID;
+                                      index_it := index_it + 1;
+                                    ELSE
+                                      id_fin := it.PAGO_ID;
+                                      index_it := index_it - 1;
+                                    END IF;
+                                    IF index_it = 1 THEN
+                                       MNOMPEN.NOMP_PROCESO_NOMINA_PCK.REGISTRAR_PAGINAS_SP(id_inicio,id_fin,'||IN_PROCESO_ID||','||v_periodo||','||0||');
+                                       cont := cont + 1;
+                                    END IF;
+                                  END LOOP;
+                                  IF(cant_reg = 1) THEN
+                                    id_fin :=  id_inicio;
+                                    MNOMPEN.NOMP_PROCESO_NOMINA_PCK.REGISTRAR_PAGINAS_SP(id_inicio,id_fin,'||IN_PROCESO_ID||','||v_periodo||','||0||');
+                                  END IF;
+                             END;';
+     ELSIF IN_PROCESO_ID = C_PROCESO_PAGO_SAAP THEN
+       
+      FOR reg_banco IN cur_bancos(v_periodo) LOOP
+           v_sql_query_pag := 'SELECT TMP_ID
+                              FROM (SELECT s.tmp_id, row_number() over(ORDER BY s.tmp_id ASC) LINE_NUMBER
+                              FROM mnompen.nomp_pagos_saap_tmp s
+                              WHERE s.banco_id = '|| reg_banco.banco_id ||'
+                              AND   s.estado = '''||C_ESTADO_SAAP_NUEVO||''' AND s.periodo = '||v_periodo||') WHERE (';
+
+          SELECT COUNT(T.TMP_ID)
+          INTO v_longitud
+          FROM MNOMPEN.NOMP_PAGOS_SAAP_TMP T
+          WHERE T.BANCO_ID = reg_banco.banco_id
+          AND   T.ESTADO = 'NUEVO' 
+          AND T.PERIODO = v_periodo;
+          
+          v_longitud_pagina := MNOMPEN.NOMP_LIQUIDACION_NOMINA_PCK.OBTENER_VALOR_GEN_PARAMETRO(1,2400,'NOMP_LIM_BCO_PAG');
+          
+          v_it := 0 ;
+          v_sql_subquery_pag := '';  
+          BEGIN
+            LOOP
+              IF v_it <> 0 THEN
+                v_sql_subquery_pag := v_sql_subquery_pag || ' OR ';
+              END IF;
+              v_sql_subquery_pag := v_sql_subquery_pag || 'LINE_NUMBER = ' ||
+                                    TO_CHAR(v_it + 1);
+              v_it               := v_it + v_longitud_pagina;
+              IF v_it > v_longitud THEN
+                v_sql_subquery_pag := v_sql_subquery_pag || ' OR LINE_NUMBER = ' ||
+                                      TO_CHAR((v_it - v_longitud_pagina) +
+                                              MOD(v_longitud, v_longitud_pagina));
+                EXIT;
+              ELSE
+                v_sql_subquery_pag := v_sql_subquery_pag || ' OR LINE_NUMBER = ' ||
+                                      TO_CHAR(v_it);
+              END IF;
+            END LOOP;
+            v_sql_query_pag := v_sql_query_pag || v_sql_subquery_pag ||
+                               ') ORDER BY LINE_NUMBER ';
+          END;
+      --dbms_output.put_line('v_esExtranjero='||v_esExtranjero||' - Consulta='||v_sql_query_pag);
+
+          EXECUTE IMMEDIATE 'DECLARE
+                                    id_inicio          NUMBER;
+                                    id_fin             NUMBER;
+                                    index_it           NUMBER := 1;
+                                    cont               NUMBER := 0;
+                                    cant_reg           NUMBER := 0;
+                             BEGIN
+                                  FOR it IN ('||v_sql_query_pag||') LOOP
+                                    cant_reg := cant_reg + 1;
+                                    IF index_it = 1 THEN
+                                      id_inicio := it.tmp_id;
+                                      index_it := index_it + 1;
+                                    ELSE
+                                      id_fin := it.tmp_id;
+                                      index_it := index_it - 1;
+                                    END IF;
+                                    IF index_it = 1 THEN
+                                       MNOMPEN.NOMP_PROCESO_NOMINA_PCK.REGISTRAR_PAGINAS_SP(id_inicio,id_fin,'||IN_PROCESO_ID||','||v_periodo||',NULL);
+                                       cont := cont + 1;
+                                    END IF;
+                                  END LOOP;
+                                  IF(cant_reg = 1) THEN
+                                    id_fin :=  id_inicio;
+                                    MNOMPEN.NOMP_PROCESO_NOMINA_PCK.REGISTRAR_PAGINAS_SP(id_inicio,id_fin,'||IN_PROCESO_ID||','||v_periodo||',NULL);
+                                  END IF;
+                             END;';
+      END LOOP;                           
+     END IF;
+     --DBMS_OUTPUT.put_line('FIN PAGINACION -->'|| SYSDATE);
+  EXCEPTION WHEN OTHERS THEN
+    OUT_COD_RESPUESTA := 1;
+    OUT_MENSAJE := 'ERROR EN EL METODO [PAGINA_PROCESO] : '|| SQLERRM ||'-'||dbms_utility.format_error_backtrace; 
+  END PAGINAR_PROCESO_SP;
+
+ /* Autor  : POR07096
+  * Fecha Creaci?n  : Septiembre de 2020
+  * Descrici?n : Proceso que registra la paginaci?n.
+  */
+  PROCEDURE REGISTRAR_PAGINAS_SP (IN_ID_PAG_INICIO IN NUMBER, 
+                                  IN_ID_PAG_FINAL IN NUMBER, 
+                                  IN_PROCESO_ID IN NUMBER,
+                                  IN_PERIODO IN NUMBER,
+                                  IN_PAGO_LOTE_ID IN NUMBER)
+  IS
+    l_valPaginaRegistrada NUMBER := 0;
+    l_numRegistroPagos    NUMBER := 0;
+    
+  BEGIN
+  
+    SELECT COUNT(BP.PAGINACION_ID)  INTO l_valPaginaRegistrada
+    FROM MNOMPEN.NOMP_BAT_PAGINACION BP
+    WHERE IN_ID_PAG_FINAL BETWEEN BP.ID_INICIO AND BP.ID_FIN;
+      
+    IF IN_PROCESO_ID = C_PROCESO_LIQUIDACION 
+      THEN
+        SELECT COUNT(P.PAGO_ID) INTO l_numRegistroPagos
+        FROM MPENGES.SPG_PAGO P, MPENGES.SPG_PAGO_LOTE L
+        WHERE P.PAGO_LOTE_ID = L.PAGO_LOTE_ID
+        AND L.ESTADO = 'APROBADO' 
+        AND P.TIPO_PAGO_ID = 'RETIRO_PROGRAMADO'
+        AND P.PERIODO = IN_PERIODO 
+        AND P.PAGO_ID BETWEEN IN_ID_PAG_INICIO AND IN_ID_PAG_FINAL;
+    ELSIF IN_PROCESO_ID = C_PROCESO_PAGO_SAAP 
+      THEN
+        SELECT COUNT(T.TMP_ID) INTO l_numRegistroPagos
+          FROM MNOMPEN.NOMP_PAGOS_SAAP_TMP T
+          WHERE T.TMP_ID BETWEEN IN_ID_PAG_INICIO AND IN_ID_PAG_FINAL;
+    END IF;
+
+    IF(l_valPaginaRegistrada = 0)
+    THEN
+        --DBMS_OUTPUT.put_line('IN_ID_PAG_INICIO='||IN_ID_PAG_INICIO||'- IN_ID_PAG_FINAL='||IN_ID_PAG_FINAL||'- NUM_REGISTROS='||l_numRegistroPagos);
+        INSERT INTO MNOMPEN.NOMP_BAT_PAGINACION (  paginacion_id               ,
+                                                    id_inicio                   ,
+                                                    id_fin                      ,
+                                                    estado_paginacion_id        ,
+                                                    proceso_id                  ,
+                                                    pago_lote_id                ,
+                                                    procesados                  ,
+                                                    con_error                   ,
+                                                    observaciones               ,
+                                                    periodo                     ,
+                                                    total                       ,
+                                                    fecha_inicio_exe            ,
+                                                    fecha_fin_exe               ,
+                                                    usuario_creacion            ,
+                                                    fecha_creacion              ,
+                                                    usuario_ultima_modificacion ,
+                                                    fecha_ultima_modificacion   )
+                                          VALUES(MNOMPEN.NOMP_BAT_PAGINACION_SEQ.NEXTVAL,
+                                                 IN_ID_PAG_INICIO,
+                                                 IN_ID_PAG_FINAL,
+                                                 C_ESTADO_PAG_NUEVO,
+                                                 IN_PROCESO_ID,
+                                                 IN_PAGO_LOTE_ID,
+                                                 0,
+                                                 0,
+                                                 NULL,
+                                                 IN_PERIODO,
+                                                 l_numRegistroPagos,
+                                                 NULL,
+                                                 NULL,
+                                                 USER,
+                                                 SYSDATE,
+                                                 NULL,
+                                                 NULL);
+                                                 
+         IF IN_PROCESO_ID = C_PROCESO_PAGO_SAAP THEN
+            UPDATE MNOMPEN.NOMP_PAGOS_SAAP_TMP S 
+            SET S.ESTADO = C_ESTADO_SAAP_PAGINADO,
+                S.FECHA_ULTIMA_MODIFICACION = SYSDATE,
+                S.USUARIO_ULTIMA_MODIFICACION = USER
+            WHERE S.TMP_ID BETWEEN IN_ID_PAG_INICIO AND IN_ID_PAG_FINAL;
+         END IF;  
+         COMMIT;                                
+      --DBMS_OUTPUT.PUT_LINE('PAGINA='||IN_ID_PAG_INICIO||'-'||IN_ID_PAG_FINAL);                                                           
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE_APPLICATION_ERROR (-20001, 'ERROR EN EL METODO [REGISTRAR_PAGINAS_SP] : '|| SQLERRM);  
+  END REGISTRAR_PAGINAS_SP;
+  
+  /* Autor  : POR07096
+  * Fecha Creaci?n  : Septiembre de 2020
+  * Descrici?n : Proceso que consulta y retorna las paginas que estan pendientes por procesar.
+  */
+  PROCEDURE CONSULTAR_PAGINAS_PENDIENTES(IN_PROCESO_ID IN NUMBER,
+                                         OUT_PAG_ID_PEND OUT NUMBER)
+  IS
+       v_periodo NUMBER;
+  BEGIN
+       v_periodo := TO_CHAR(SYSDATE,'YYYYMM');
+       
+       SELECT MIN(P.PAGINACION_ID) INTO OUT_PAG_ID_PEND
+       FROM MNOMPEN.NOMP_BAT_PAGINACION P
+       WHERE P.ESTADO_PAGINACION_ID IN (C_ESTADO_PAG_NUEVO,C_ESTADO_PAG_ERROR_EJECUCION)
+       AND P.PROCESO_ID = IN_PROCESO_ID
+       AND P.PERIODO = v_periodo;  
+       
+  EXCEPTION WHEN NO_DATA_FOUND THEN    
+    OUT_PAG_ID_PEND := NULL;
+  END CONSULTAR_PAGINAS_PENDIENTES;  
+  
+  PROCEDURE ACTUALIZAR_PAGINACION (IN_REG_PAGINACION  IN MNOMPEN.NOMP_BAT_PAGINACION%ROWTYPE,
+                                   IN_OBSERVACION     IN VARCHAR2,
+                                   IN_USUARIO         IN VARCHAR2)
+  IS 
+  BEGIN
+       UPDATE MNOMPEN.NOMP_BAT_PAGINACION NP
+       SET NP.PROCESADOS = NVL(IN_REG_PAGINACION.PROCESADOS,NP.PROCESADOS),
+           NP.CON_ERROR  = NVL(IN_REG_PAGINACION.CON_ERROR,NP.CON_ERROR),
+           NP.OBSERVACIONES = IN_OBSERVACION,
+           NP.ESTADO_PAGINACION_ID = NVL(IN_REG_PAGINACION.ESTADO_PAGINACION_ID,NP.ESTADO_PAGINACION_ID),
+           NP.FECHA_INICIO_EXE = NVL(IN_REG_PAGINACION.FECHA_INICIO_EXE,NP.FECHA_INICIO_EXE),
+           NP.FECHA_FIN_EXE = NVL(IN_REG_PAGINACION.FECHA_FIN_EXE,NP.FECHA_FIN_EXE),
+           NP.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+           NP.FECHA_ULTIMA_MODIFICACION = SYSDATE
+       WHERE NP.PAGINACION_ID = IN_REG_PAGINACION.PAGINACION_ID;
+      COMMIT;
+     
+  END ACTUALIZAR_PAGINACION; 
+  
+  PROCEDURE ACTUALIZAR_ESTADO_LOTE(IN_PAGINA_ID IN MNOMPEN.NOMP_BAT_PAGINACION.PAGINACION_ID%TYPE,IN_USUARIO IN VARCHAR2)
+  IS 
+    l_numeroConError   NUMBER;
+    l_estadoLote       VARCHAR2(20);
+    
+    CURSOR CUR_LOTE_X_PAGINA(c_pagina_id IN MNOMPEN.NOMP_BAT_PAGINACION.PAGINACION_ID%TYPE)
+    IS
+      SELECT DISTINCT P.PAGO_LOTE_ID 
+      FROM MPENGES.SPG_PAGO P, MNOMPEN.NOMP_BAT_PAGINACION BP
+      WHERE BP.PAGINACION_ID = c_pagina_id
+      AND P.PAGO_ID BETWEEN BP.ID_INICIO AND BP.ID_FIN
+      AND P.TIPO_PAGO_ID = C_TIPO_PAGO_RET_PROGRAMADO;
+      
+  BEGIN
+    
+      FOR REG_LOTE IN CUR_LOTE_X_PAGINA(IN_PAGINA_ID)
+      LOOP
+          BEGIN 
+               SELECT COUNT(1) INTO l_numeroConError
+               FROM  MPENGES.SPG_PAGO P , MPENGES.SPG_DETALLE_PAGO DP
+               WHERE DP.PAGO_ID = P.PAGO_ID 
+               AND DP.ESTADO = 'ERROR'
+               AND P.PAGO_LOTE_ID = REG_LOTE.PAGO_LOTE_ID;
+          EXCEPTION WHEN OTHERS THEN 
+               l_numeroConError:= 0;
+          END;    
+          
+           IF(l_numeroConError > 0) THEN
+              l_estadoLote := C_ESTADO_PAGADO_PARCIAL;
+           ELSE
+              l_estadoLote := C_ESTADO_PAGADO;
+           END IF;
+                  
+          UPDATE MPENGES.SPG_PAGO_LOTE L
+          SET L.FECHA_PAGO = SYSDATE,
+              L.ESTADO = l_estadoLote,
+              L.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+              L.FECHA_ULTIMA_MODIFICACION = SYSDATE
+          WHERE L.PAGO_LOTE_ID =  REG_LOTE.PAGO_LOTE_ID; 
+          COMMIT;
+          
+      END LOOP;
+        
+   END ACTUALIZAR_ESTADO_LOTE;  
+  
+  /* Autor  : POR07096
+  * Fecha Creaci?n  : Septiembre de 2020
+  * Descrici?n : Proceso que consulta el rango de pagos segun la paginaci?n y ejecuta la liquidaci?n
+  * de los mismos.
+  */
+  PROCEDURE EJECUTAR_LIQUIDACION(IN_PAGINA_ID IN NUMBER,
+                                 IN_USUARIO IN VARCHAR2,
+                                 OUT_COD_RESPUESTA OUT NUMBER,
+                                 OUT_MENSAJE OUT VARCHAR2)    
+  IS 
+    l_pagoIdInicio     NUMBER;
+    l_pagoIdFinal      NUMBER;
+    l_regProcesados    NUMBER :=0;
+    l_regConError      NUMBER :=0;
+    l_codRespuesta     NUMBER;
+    l_mensajeRespuesta VARCHAR2(2000);
+    l_regPaginacion    MNOMPEN.NOMP_BAT_PAGINACION%ROWTYPE;
+    l_reg_pago         MPENGES.SPG_PAGO%ROWTYPE;
+    l_observacion      VARCHAR2(2000);
+    l_pagoLoteId       NUMBER;
+    l_estadoPagina     MNOMPEN.NOMP_BAT_PAGINACION.ESTADO_PAGINACION_ID%TYPE;
+    
+    CURSOR CUR_PAGINACION_PAGOS(p_pagoIdInicio IN NUMBER,p_pagoIdFinal IN NUMBER)
+    IS
+        SELECT P.PAGO_ID,
+               P.CUENTA_POR_PAGAR_ID,
+               P.TIPO_PAGO_ID,
+               P.VALOR_PESOS_TOTAL,
+               P.FECHA_PAGO,
+               P.EPS_ID,
+               P.PORCENTAJE_EPS,
+               P.CAJA_COMPENSACION_ID,
+               P.ESTADO_OFICINA,
+               P.PAGO_LOTE_ID,
+               P.SOLICITUD_ID_BENEFICIO,
+               P.PERIODO,
+               P.PROCESO
+        FROM MPENGES.SPG_PAGO P
+        WHERE P.PAGO_ID BETWEEN p_pagoIdInicio AND p_pagoIdFinal
+        AND P.TIPO_PAGO_ID = C_TIPO_PAGO_RET_PROGRAMADO;
+  BEGIN
+        DBMS_OUTPUT.PUT_LINE('-------ENTRO EJECUTAR LIQUIDACION PAQUETE ='||to_char(SYSDATE, 'YYYY-MM-DD HH24_MI_SS'));
+    OUT_COD_RESPUESTA:=0;
+    l_observacion := NULL;
+    l_regPaginacion.Paginacion_Id := IN_PAGINA_ID;
+    l_regPaginacion.Fecha_Inicio_Exe := SYSDATE;
+    l_regPaginacion.Estado_Paginacion_Id := C_ESTADO_PAG_EN_PROCESO;
+    
+       BEGIN
+         SELECT NP.ID_INICIO,NP.ID_FIN,NP.ESTADO_PAGINACION_ID 
+         INTO l_pagoIdInicio,l_pagoIdFinal,l_estadoPagina
+         FROM MNOMPEN.NOMP_BAT_PAGINACION NP
+         WHERE NP.PAGINACION_ID = IN_PAGINA_ID FOR UPDATE;
+       EXCEPTION WHEN NO_DATA_FOUND THEN
+           RAISE_APPLICATION_ERROR (-20001, 'PAGINACION CON EL ID ['||IN_PAGINA_ID||'] NO EXISTE  : '|| SQLERRM);
+       END; 
+       
+       DBMS_OUTPUT.PUT_LINE(' Estado de la Pagina = '|| l_estadoPagina || ' - Estado correcto a procesar 1 - ' || 'Numero de Paguina' ||IN_PAGINA_ID);
+       
+       IF(l_estadoPagina = C_ESTADO_PAG_NUEVO) THEN
+           --ACTUALIZAR ESTADO DE PAGINA A EN_PROCESO
+           ACTUALIZAR_PAGINACION(l_regPaginacion, l_observacion, IN_USUARIO);
+          
+       -- DBMS_OUTPUT.PUT_LINE('------- ENTRO EJECUTAR LIQUIDACION PAQUETE actualizar estado pagina -------');
+           
+           --LIQUIDACION DE CADA UNO DE LOS PAGOS DE LA PAGINA SUMINISTRADA
+        ---    DBMS_OUTPUT.PUT_LINE(l_pagoIdInicio || '  -  ' || l_pagoIdFinal );
+            
+           FOR REG_PAGO IN CUR_PAGINACION_PAGOS(l_pagoIdInicio,l_pagoIdFinal)
+           LOOP
+               l_reg_pago.PAGO_ID               := REG_PAGO.PAGO_ID;
+               l_reg_pago.CUENTA_POR_PAGAR_ID   := REG_PAGO.CUENTA_POR_PAGAR_ID;
+               l_reg_pago.TIPO_PAGO_ID          := REG_PAGO.TIPO_PAGO_ID;
+               l_reg_pago.VALOR_PESOS_TOTAL     := REG_PAGO.VALOR_PESOS_TOTAL;
+               l_reg_pago.FECHA_PAGO            := REG_PAGO.FECHA_PAGO;
+               l_reg_pago.EPS_ID                := REG_PAGO.EPS_ID;
+               l_reg_pago.PORCENTAJE_EPS        := REG_PAGO.PORCENTAJE_EPS;
+               l_reg_pago.CAJA_COMPENSACION_ID  := REG_PAGO.CAJA_COMPENSACION_ID;
+               l_reg_pago.ESTADO_OFICINA        := REG_PAGO.ESTADO_OFICINA;
+               l_reg_pago.PAGO_LOTE_ID          := REG_PAGO.PAGO_LOTE_ID;
+               l_reg_pago.SOLICITUD_ID_BENEFICIO:= REG_PAGO.SOLICITUD_ID_BENEFICIO;
+               l_reg_pago.PERIODO               := REG_PAGO.PERIODO;
+               l_reg_pago.PROCESO               := REG_PAGO.PROCESO;
+               
+             --  DBMS_OUTPUT.PUT_LINE('------- ENTRO EJECUTAR LIQUIDACION PAQUETE Consulta Pago por limite inicial y final -------');
+             --  DBMS_OUTPUT.PUT_LINE(REG_PAGO.PAGO_ID );
+                              
+               --APLICA_PAGO (LIQUIDACION)
+               MNOMPEN.NOMP_LIQUIDACION_NOMINA_PCK.APLICA_PAGO(l_reg_pago, IN_USUARIO,l_codRespuesta,l_mensajeRespuesta);
+               
+              -- DBMS_OUTPUT.PUT_LINE(l_codRespuesta);
+               
+               IF(l_codRespuesta = 0)
+               THEN
+                   l_regProcesados := l_regProcesados + 1;
+               ELSE
+                   l_regConError := l_regConError + 1;
+               END IF; 
+               -- ACTUALIZAR EL CAMPO DE REGISTROS PROCESADOS O CON ERROR DE LA PAGINACION
+               l_regPaginacion.Procesados := l_regProcesados;
+               l_regPaginacion.Con_Error := l_regConError;
+               ACTUALIZAR_PAGINACION(l_regPaginacion,l_observacion,IN_USUARIO);
+               l_pagoLoteId := l_reg_pago.PAGO_LOTE_ID;
+           END LOOP;   
+           ACTUALIZAR_ESTADO_LOTE(IN_PAGINA_ID,IN_USUARIO);       
+           -- ACTUALIZAR EL ESTADO Y LA FECHA DE FINALIZACION DE LIQUIDACION DE LA PAGINA
+           l_regPaginacion.Fecha_Fin_Exe := SYSDATE;
+           l_regPaginacion.Estado_Paginacion_Id := C_ESTADO_PAG_TERMINADO;
+           ACTUALIZAR_PAGINACION(l_regPaginacion,l_observacion,IN_USUARIO);
+       ELSE
+         COMMIT; -- FIN DE LA TRANSACCION DEL SELECT FOR UPDATE   
+          --  DBMS_OUTPUT.PUT_LINE('------- COMMIT FIN -------');
+       END IF;    
+       DBMS_OUTPUT.PUT_LINE('-------FIN EJECUTAR LIQUIDACION='||to_char(SYSDATE, 'YYYY-MM-DD HH24_MI_SS'));
+  EXCEPTION WHEN OTHERS THEN
+    OUT_COD_RESPUESTA := 1;
+    OUT_MENSAJE := 'ERROR EN EL METODO [EJECUTAR_LIQUIDACION] : '|| SQLERRM;
+    -- ACTUALIZAR EL ESTADO CON ERROR Y LA FECHA DE FINALIZACION DE LIQUIDACION DE LA PAGINA
+     l_regPaginacion.Fecha_Fin_Exe := SYSDATE;
+     l_regPaginacion.Estado_Paginacion_Id := C_ESTADO_PAG_ERROR_EJECUCION;
+     l_observacion := OUT_MENSAJE;
+     ACTUALIZAR_PAGINACION(l_regPaginacion,l_observacion, IN_USUARIO);
+  END EJECUTAR_LIQUIDACION;  
+  
+  /*Funcion que obtiene el siguiente valor de una secuencia
+    Usuario :POR07183
+    Fecha: 24/11/2020
+    @param IN_NOMBRE_SEQ IN VARCHAR2
+    @return ID DE LA SECUENCIA
+  */
+  FUNCTION obtener_seq_fn(
+                           in_nombre_seq IN VARCHAR2
+                         ) RETURN NUMBER AS
+                         
+    l_select            VARCHAR2(100);
+    l_valor_secuencia   NUMBER;
+    
+  BEGIN
+  
+    l_select := 'SELECT ' || in_nombre_seq || '.NEXTVAL FROM DUAL';
+    
+    EXECUTE IMMEDIATE l_select
+      INTO l_valor_secuencia;
+    RETURN l_valor_secuencia;
+    
+  END obtener_seq_fn;
+  
+  /*Funcion que obtiene el clasePagoId
+    Usuario :POR07096
+    Fecha: 26/04/2021
+    @return CLASE_PAGO_ID
+  */
+     FUNCTION homologa_clasePago(in_pagoId IN MPENGES.SPG_PAGO.PAGO_ID%TYPE,
+                              in_tipoPagoId IN MPENGES.SPG_PAGO.TIPO_PAGO_ID%TYPE,
+                              in_operacionConcepto IN MPENGES.SPG_DETALLE_PAGO.OPERACION_CONCEPTO_ID%TYPE,
+                              in_descuentoAdicional IN MPENGES.SPG_DETALLE_PAGO.DESCUENTO_ADICIONAL_ID%TYPE
+                             ) RETURN NUMBER AS
+                         
+  
+    l_clasePagoId  NUMBER;
+    l_fuenteFinanciamiento MNOMPEN.NOMP_PRELIQUIDACION_PAGO.FUENTE_FINANCIAMIENTO%TYPE;
+    l_descuentoAdicional MPENGES.SPG_DESCUENTO_ADICIONAL.TIPO_DESCUENTO_ID%TYPE;
+    l_pagoDemandante MPENGES.SPG_DESCUENTO_ADICIONAL.PAGO_DEMANDANTE%TYPE;
+  BEGIN
+       
+    BEGIN
+      SELECT PRE.FUENTE_FINANCIAMIENTO INTO l_fuenteFinanciamiento
+      FROM MNOMPEN.NOMP_PRELIQUIDACION_PAGO PRE    
+      WHERE PRE.PAGO_ID =  in_pagoId;                 
+    EXCEPTION WHEN OTHERS THEN
+      l_fuenteFinanciamiento := 0;
+    END;
+    
+    BEGIN
+      SELECT DE.TIPO_DESCUENTO_ID,DE.PAGO_DEMANDANTE INTO l_descuentoAdicional,l_pagoDemandante
+      FROM  MPENGES.SPG_DESCUENTO_ADICIONAL DE   
+      WHERE DE.DESCUENTO_ADICIONAL_ID = in_descuentoAdicional;              
+    EXCEPTION WHEN OTHERS THEN
+      l_descuentoAdicional := NULL;
+    END;
+    
+    
+    IF (in_tipoPagoId IN (C_TIPO_PAGO_RET_PROGRAMADO,C_TIPO_PAGO_PROVISIONAL)) THEN
+      IF(l_fuenteFinanciamiento > 0) THEN
+         IF(l_fuenteFinanciamiento IN (2,4)) THEN -- Fuente Financiamiento igual a SOCIEDAD
+                IF(in_operacionConcepto = C_OPERACION_DESC_ADICIONAL 
+                   AND l_descuentoAdicional = C_TIPO_DESC_ADIC_EMBARGO) THEN
+                   l_pagoDemandante := NVL(l_pagoDemandante,'N');
+                   IF(l_pagoDemandante = 'N') THEN
+                      l_clasePagoId := 74;
+                   ELSE
+                      l_clasePagoId := 104;
+                   END IF;  
+                ELSE 
+                    l_clasePagoId := 70;
+                END IF;
+         ELSE
+             IF(in_operacionConcepto = C_OPERACION_DESC_ADICIONAL 
+                   AND l_descuentoAdicional = C_TIPO_DESC_ADIC_EMBARGO) THEN
+                   l_pagoDemandante := NVL(l_pagoDemandante,'N');
+                   IF(l_pagoDemandante = 'N') THEN
+                      l_clasePagoId := 60;
+                   ELSE
+                      l_clasePagoId := 103;
+                   END IF;  
+              ELSE 
+                  l_clasePagoId := 20;
+              END IF;
+         END IF;
+      END IF;
+    END IF;     
+     
+    RETURN l_clasePagoId;
+    
+  END homologa_clasePago;
+  ----------------------------------------------------------------------------------------------
+  -- Author  : Fidel Beltr?n (POR07183)                                                       --
+  -- Created : 23/12/2020                                                                     --
+  -- Purpose : Obtiene pagos que se enviaran a saap y realiza la paginaci?n con dichos pagos  --
+  ----------------------------------------------------------------------------------------------
+  PROCEDURE pago_saap_por_banco (OUT_COD_RESPUESTA OUT VARCHAR2,
+                                 OUT_MENSAJE OUT VARCHAR2) IS
+  
+     --l_contador                 PLS_INTEGER;
+     l_salida_banco             msaap.pag_cuenta.banco_id%TYPE;
+     l_salida_nro_cta           msaap.pag_cuenta.num_cuenta%TYPE;
+     l_salida_tp_cta            msaap.pag_cuenta.tp_cuenta_id%TYPE;
+     l_salida_cta_contable      msaap.pag_cuenta.cuenta_contable%TYPE;
+     l_datos_temporales         mnompen.nomp_pagos_saap_tmp%ROWTYPE;
+     l_cuenta_pensional         mpenges.spg_medio_pago_persona.cuenta_pensional%TYPE;
+     l_es_pensinal              BOOLEAN;
+     l_codRespPaginacion        NUMBER;
+     l_mensRespPaginacion       VARCHAR2(4000);
+     l_formaPagoId              mpenges.spg_medio_pago_persona.forma_pago_id%TYPE;
+     l_clasePagoId              NUMBER;    
+     l_existePagoTmp            NUMBER;
+      
+     --Cursor encargado de obtener la informaci?n de los pagos.
+     CURSOR cur_pagos(
+                       cp_inicio IN PLS_INTEGER,
+                       cp_fin    IN PLS_INTEGER,
+                       cp_periodo IN NUMBER
+                     ) IS
+      SELECT detalle_pago_id,
+             pago_id,
+             persona_id,
+             forma_pago_id,
+             banco_id,
+             periodo,
+             pago_lote_id,
+             persona_pago,
+             esta_paginado,
+             tipo_pago_id,
+             operacion_concepto_id ,
+             descuento_adicional_id
+      FROM  (SELECT dp.detalle_pago_id,
+                    s.pago_id,
+                    mp.persona_id,
+                    mp.forma_pago_id,
+                    dp.banco_id,
+                    s.periodo,
+                    l.pago_lote_id,
+                    dp.persona_pago,
+                    (select count(1)
+                    from mnompen.nomp_pagos_saap_tmp pst
+                    where pst.pago_id = dp.detalle_pago_id
+                    and pst.estado = C_ESTADO_SAAP_PAGINADO) esta_paginado,
+                    s.tipo_pago_id,
+                    dp.operacion_concepto_id, 
+                    dp.descuento_adicional_id 
+               FROM mpenges.spg_pago_lote l,
+                    mpenges.spg_pago s,
+                    mpenges.spg_detalle_pago dp,
+                    mpenges.spg_medio_pago_persona mp
+              WHERE l.pago_lote_id = s.pago_lote_id
+                AND s.pago_id = dp.pago_id
+                AND dp.persona_pago = mp.persona_id
+                AND s.tipo_pago_id = 'RETIRO_PROGRAMADO'
+                AND dp.operacion_concepto_id in ('RETIRO_PROGRAMADO','DESCUENTO_ADICIONAL','MESADA_ADICIONAL')
+                 AND dp.estado = 'PAGADO'
+          AND l.tipo_pago = 'ME'
+          AND dp.estado_saap = C_ESTADO_PENDIENTE_SAAP
+          AND s.periodo = cp_periodo
+          AND s.pago_id BETWEEN cp_inicio AND cp_fin)
+       WHERE  esta_paginado = 0 ;
+       
+    
+    --Cursor encargado de obtener los banco_id de la tabla temporal.      
+    CURSOR cur_bancos (c_periodo IN NUMBER)IS
+      SELECT UNIQUE(s.banco_id)
+        FROM mnompen.nomp_pagos_saap_tmp s
+       WHERE s.estado = C_ESTADO_SAAP_NUEVO
+         and s.periodo = c_periodo
+       ORDER BY s.banco_id ASC;
+     
+    --Cursor encargado de obtener la informaci?n de los pagos desde la tabla temporal por banco_id.  
+    CURSOR cur_info_por_banco(
+                                cp_banco_id IN mbancos.ban_banco.banco_id%TYPE,
+                                c_periodo IN NUMBER
+                             ) IS
+     SELECT s.banco_id,
+                    s.pago_id,
+                    s.cta_origen,
+                    s.persona_id,
+                    s.periodo,
+                    s.pago_lote_id,
+                    s.estado
+              FROM mnompen.nomp_pagos_saap_tmp s
+             WHERE s.banco_id = cp_banco_id
+               AND s.estado = C_ESTADO_SAAP_NUEVO
+                and s.periodo = c_periodo
+             ORDER BY s.pago_id ASC;
+          
+     --Cursor encargado de obtener pado_id inicio y pago_id fin desde la tabla de paginaci?n para el proceso 2 con estado terminado.
+     CURSOR cur_itetacion_pagos (c_periodo IN NUMBER)IS
+        SELECT s.id_inicio,
+               s.id_fin
+          FROM mnompen.nomp_bat_paginacion s
+         WHERE s.proceso_id = C_PROCESO_LIQUIDACION
+           AND s.estado_paginacion_id = C_ESTADO_PAG_TERMINADO
+           AND s.periodo = c_periodo
+      ORDER BY s.paginacion_id ASC;                           
+     
+  
+  BEGIN
+    OUT_COD_RESPUESTA := 'OK';
+    v_periodo := TO_CHAR(SYSDATE,'YYYYMM');
+    
+    FOR i IN cur_itetacion_pagos (v_periodo) LOOP
+        FOR j IN cur_pagos(i.id_inicio, i.id_fin, v_periodo ) LOOP
+           
+           --l_contador            := l_contador + 1;
+           l_salida_banco        := NULL;
+           l_salida_nro_cta      := NULL;
+           l_salida_tp_cta       := NULL;
+           l_salida_cta_contable := NULL;
+           
+           BEGIN
+              SELECT mp.cuenta_pensional , mp.forma_pago_id
+                INTO l_cuenta_pensional , l_formaPagoId
+                 FROM mpenges.spg_medio_pago_persona mp 
+               WHERE mp.persona_id = j.persona_pago;
+           EXCEPTION
+             WHEN OTHERS THEN
+               l_cuenta_pensional := 'N';
+           END;
+           
+           CASE
+              WHEN l_cuenta_pensional = 'S' THEN l_es_pensinal := TRUE;
+              ELSE l_es_pensinal := FALSE;
+           END CASE;
+             
+            l_clasePagoId := homologa_clasePago(j.pago_id,
+                                                      j.tipo_pago_id,
+                                                      j.operacion_concepto_id,
+                                                      j.descuento_adicional_id 
+                                                     );
+                                                     
+           IF(l_formaPagoId = 2 AND l_clasePagoId = 20) THEN 
+               --Obtiene el banco_id y la cuenta origen
+               msaap.pag_integracion_pck.obtener_cta_origen_sp(in_clase_pago_id     => NVL(l_clasePagoId,CONS_CLASE_PAGO_RET_PROG),
+                                                               in_inversion_id      => CONS_INVERSION_RET_PROG,
+                                                               in_forma_pago_id     => l_formaPagoId,
+                                                               in_banco_id          => j.banco_id,
+                                                               in_es_pensional      => l_es_pensinal,
+                                                               out_banco_id         => l_salida_banco,
+                                                               out_numero_cuenta    => l_salida_nro_cta,
+                                                               out_tp_cuenta        => l_salida_tp_cta,
+                                                               out_cuenta_contable  => l_salida_cta_contable
+                                                              );
+           END IF;
+                                   
+           IF(l_salida_banco IS NULL) THEN
+             IF(l_clasePagoId = 70 ) THEN 
+                   BEGIN
+                      SELECT
+                        c.banco_id, c.num_cuenta, c.tp_cuenta_id, c.cuenta_contable
+                         into l_salida_banco, l_salida_nro_cta, l_salida_tp_cta, l_salida_cta_contable
+                      FROM
+                          pag_clase_pago_cuenta cpc
+                      INNER JOIN
+                          pag_cuenta c ON (c.cuenta_id=cpc.cuenta_origen_id)
+                      WHERE cpc.clase_pago_id = 70
+                        and cpc.cod_oficina   = -1
+                        and cpc.inversion_id = 1
+                        and cpc.forma_pago_id = l_formaPagoId;
+                   EXCEPTION WHEN OTHERS THEN
+                      l_salida_banco := NULL; 
+                      l_salida_nro_cta := NULL; 
+                      l_salida_tp_cta := NULL;
+                      l_salida_cta_contable := NULL;
+                   END;       
+               ELSIF(l_clasePagoId = 74 ) THEN  
+                
+                  BEGIN
+                      SELECT
+                        c.banco_id, c.num_cuenta, c.tp_cuenta_id, c.cuenta_contable
+                         into l_salida_banco, l_salida_nro_cta, l_salida_tp_cta, l_salida_cta_contable
+                      FROM
+                          pag_clase_pago_cuenta cpc
+                      INNER JOIN
+                          pag_cuenta c ON (c.cuenta_id=cpc.cuenta_origen_id)
+                      WHERE cpc.clase_pago_id = 74
+                        and cpc.cod_oficina   = -1
+                        and cpc.inversion_id = 1
+                        and cpc.forma_pago_id = 2;    
+                   EXCEPTION WHEN OTHERS THEN
+                      l_salida_banco := NULL; 
+                      l_salida_nro_cta := NULL; 
+                      l_salida_tp_cta := NULL;
+                      l_salida_cta_contable := NULL;
+                   END;         
+               ELSIF(l_clasePagoId = 104 ) THEN  
+                
+                  BEGIN
+                      SELECT
+                        c.banco_id, c.num_cuenta, c.tp_cuenta_id, c.cuenta_contable
+                         into l_salida_banco, l_salida_nro_cta, l_salida_tp_cta, l_salida_cta_contable
+                      FROM
+                          pag_clase_pago_cuenta cpc
+                      INNER JOIN
+                          pag_cuenta c ON (c.cuenta_id=cpc.cuenta_origen_id)
+                      WHERE cpc.clase_pago_id = 104
+                        and cpc.cod_oficina   = -1
+                        and cpc.inversion_id = 1
+                        and cpc.forma_pago_id = l_formaPagoId;    
+                   EXCEPTION WHEN OTHERS THEN
+                      l_salida_banco := NULL; 
+                      l_salida_nro_cta := NULL; 
+                      l_salida_tp_cta := NULL;
+                      l_salida_cta_contable := NULL;
+                   END;             
+               ELSE 
+                   BEGIN
+                         SELECT id_banco,
+                                 num_cuenta,  
+                                 tp_cuenta_id
+                            into l_salida_banco, l_salida_nro_cta, l_salida_tp_cta
+                              from (  SELECT c.num_cuenta,  
+                                        d.banco_id id_banco,     
+                                        e.tp_cuenta_id,
+                                        b.clase_pago_cuenta_id
+                                 FROM pag_clase_pago a,  
+                                      pag_clase_pago_cuenta b,         
+                                      pag_cuenta c,         
+                                      ban_banco d,        
+                                      pag_tp_cuenta e,  
+                                      pag_producto f,         
+                                      pag_proceso g,         
+                                      pag_concepto h    
+                                 WHERE a.clase_pago_id = b.clase_pago_id         
+                                       and b.cuenta_origen_id = c.cuenta_id         
+                                       and c.banco_id = d.banco_id         
+                                       and c.tp_cuenta_id = e.tp_cuenta_id         
+                                       and f.producto_id = a.producto_id         
+                                       and g.proceso_id = a.proceso_id         
+                                       and h.concepto_id = a.concepto_id 
+                                       and a.clase_pago_id = l_clasePagoId
+                                       and b.inversion_id = CONS_INVERSION_RET_PROG
+                                       and b.forma_pago_id = l_formaPagoId
+                                       and b.cod_oficina = -1
+                                       order by clase_pago_cuenta_id asc)
+                          where rownum <= 1;   
+                   EXCEPTION WHEN OTHERS THEN
+                      l_salida_banco := NULL; 
+                      l_salida_nro_cta := NULL; 
+                      l_salida_tp_cta := NULL;
+                   END;     
+               END IF;   
+           END IF;                    
+                                                      
+           l_datos_temporales.banco_id      := l_salida_banco;
+           l_datos_temporales.pago_id       := j.detalle_pago_id;
+           l_datos_temporales.cta_origen    := l_salida_nro_cta;
+           l_datos_temporales.persona_id    := j.persona_id;
+           l_datos_temporales.periodo       := j.periodo;
+           l_datos_temporales.pago_lote_id  := j.pago_lote_id;
+           l_datos_temporales.estado        := C_ESTADO_SAAP_NUEVO; 
+           l_datos_temporales.FECHA_CREACION := SYSDATE;
+           l_datos_temporales.USUARIO_CREACION := USER;
+           
+           BEGIN 
+             SELECT COUNT(p.pago_id) INTO l_existePagoTmp
+             FROM  mnompen.nomp_pagos_saap_tmp p
+             WHERE p.pago_id = l_datos_temporales.pago_id
+             AND p.estado = 'NUEVO';
+           EXCEPTION
+              WHEN OTHERS THEN
+                l_existePagoTmp := 0;
+           END; 
+           
+           IF(l_existePagoTmp = 0) THEN
+             BEGIN
+                INSERT INTO mnompen.nomp_pagos_saap_tmp VALUES l_datos_temporales;
+                COMMIT;
+             EXCEPTION
+                WHEN OTHERS THEN
+                   ROLLBACK;
+             END;                                              
+           END IF;
+           
+        END LOOP;
+    END LOOP;
+    
+    --l_contador := 0;
+    
+    FOR j IN cur_bancos(v_periodo) LOOP
+      
+      FOR k IN cur_info_por_banco(j.banco_id,v_periodo) LOOP
+         --l_contador := l_contador + 1;
+         
+         BEGIN
+           UPDATE mnompen.nomp_pagos_saap_tmp s
+              SET s.tmp_id = mnompen.nomp_pagos_saap_tmp_seq.NEXTVAL,
+                  S.USUARIO_ULTIMA_MODIFICACION = USER,
+                  S.FECHA_ULTIMA_MODIFICACION = SYSDATE
+            WHERE s.pago_id = k.pago_id
+              AND s.cta_origen = k.cta_origen
+              AND s.persona_id = k.persona_id;
+              
+              COMMIT;
+         EXCEPTION
+           WHEN OTHERS THEN
+             ROLLBACK;
+         END;
+      END LOOP;
+      
+    END LOOP;
+    
+    --Paginacion del proceso de envio de pagos a saap
+    MNOMPEN.NOMP_PROCESO_NOMINA_PCK.PAGINAR_PROCESO_SP(C_PROCESO_PAGO_SAAP,l_codRespPaginacion,l_mensRespPaginacion);
+    IF l_codRespPaginacion = 0 THEN
+      OUT_COD_RESPUESTA := 'OK';    
+    ELSE
+      OUT_COD_RESPUESTA := 'NO_OK';       
+      OUT_MENSAJE := l_mensRespPaginacion;
+    END IF;
+  EXCEPTION
+    WHEN OTHERS THEN
+      OUT_COD_RESPUESTA := 'NO_OK';
+      OUT_MENSAJE := 'Error proced pago_saap_por_banco '||Sqlerrm;
+  END pago_saap_por_banco;
+  
+  PROCEDURE ACTUALIZAR_AGENDA (IN_AGENDA_ID IN MGENERAL.GEN_AGENDA.AGENDA_ID%TYPE,
+                              IN_ESTADO IN MGENERAL.GEN_AGENDA.ESTADO%TYPE,
+                              IN_USUARIO IN MGENERAL.GEN_AGENDA.USUARIO_ULTIMA_MODIFICACION%TYPE,
+                              IN_FECHA_INICIAL IN MGENERAL.GEN_AGENDA.FECHA_INICIAL%TYPE, 
+                              IN_FECHA_FINAL IN MGENERAL.GEN_AGENDA.FECHA_FINAL%TYPE,
+                              IN_OBSERVACIONES IN MGENERAL.GEN_AGENDA_OBSERVACIONES.OBSERVACIONES%TYPE,
+                              IN_CICLO_VIDA IN MGENERAL.GEN_AGENDA_OBSERVACIONES.CICLO_VIDA%TYPE,
+                              IN_ACT_AGENDA IN VARCHAR2)
+  IS 
+    l_descInicializandoProc VARCHAR2(300):= 'Proceso inicializado adecuadamente '; 
+    l_descIniciarCiclo VARCHAR2(300):= 'Proceso pasa a ejecucion';    
+    l_descFinalizarProceso VARCHAR2(300):= 'Proceso notifica finalizacion. ';  
+    l_descripcion MGENERAL.GEN_AGENDA_OBSERVACIONES.OBSERVACIONES%TYPE;                    
+  BEGIN
+     IF (IN_ACT_AGENDA = 'SI') THEN
+        UPDATE MGENERAL.GEN_AGENDA G
+        SET G.ESTADO = IN_ESTADO,
+            G.FECHA_ULTIMO_ESTADO = SYSDATE,
+            G.USUARIO_ULTIMA_MODIFICACION = IN_USUARIO,
+            G.FECHA_ULTIMA_MODIFICACION = SYSDATE,
+            G.FECHA_INICIAL = NVL(IN_FECHA_INICIAL, G.FECHA_INICIAL),
+            G.FECHA_FINAL = NVL(IN_FECHA_FINAL,G.FECHA_FINAL)
+        WHERE G.AGENDA_ID =  IN_AGENDA_ID;
+     END IF;
+     
+          IF(IN_CICLO_VIDA = C_CICLO_INICIALIZANDO_PROCESO) THEN
+              l_descripcion := l_descInicializandoProc;
+          ELSIF(IN_CICLO_VIDA = C_CICLO_INICIAR_CICLO) THEN
+              l_descripcion := l_descIniciarCiclo; 
+          ELSIF(IN_CICLO_VIDA = C_CICLO_FINALIZAR_PROCESO) THEN
+              l_descripcion := l_descFinalizarProceso || IN_OBSERVACIONES;    
+          ELSIF(IN_CICLO_VIDA = C_CICLO_ABORTA_INTERNO_PROC) THEN
+              l_descripcion := IN_OBSERVACIONES;               
+          END IF;
+          
+          INSERT INTO MGENERAL.GEN_AGENDA_OBSERVACIONES (AGENDA_ID, SECUENCIA, OBSERVACIONES, CICLO_VIDA, 
+                                                         TRAZA_TECNICA, USUARIO_CREACION, FECHA_CREACION, 
+                                                         USUARIO_ULTIMA_MODIFICACION, FECHA_ULTIMA_MODIFICACION, 
+                                                         MFONDOS_SCN, ULTIMO_ESTADO_PROCESO)
+          VALUES (IN_AGENDA_ID,
+                  MGENERAL.GEN_AGENDA_OBSERVACIONES_SEQ.NEXTVAL, 
+                  l_descripcion, 
+                  IN_CICLO_VIDA, 
+                  null, 
+                  IN_USUARIO, SYSDATE, null, null, 0, IN_ESTADO);
+
+        COMMIT;
+   
+  END ACTUALIZAR_AGENDA;   
+  
+  PROCEDURE EJECUTAR_PRELIQUIDACION_CTRLM(IN_AGENDA_ID IN NUMBER,
+                                    OUT_COD_RESPUESTA OUT VARCHAR2,
+                                    OUT_MENSAJE OUT VARCHAR2) 
+  IS 
+    --PARAMETRO PROCESO 10001
+     l_usuario          VARCHAR2(30);
+     l_periodo          NUMBER;
+     l_tipoPago         VARCHAR2(30);
+     l_solicitudId      NUMBER;
+     l_esSimulacion     VARCHAR2(5);
+     
+     l_observaciones    VARCHAR2(4000);
+     l_mesadaRespuesta  NUMBER;
+     l_mensajeRespuesta VARCHAR2(4000);
+   
+    CURSOR CUR_PARAMETROS_AGENDA(p_agendaId IN NUMBER)
+    IS
+      SELECT G.NOMBRE,G.VALOR,G.TIPO_PARAMETRO
+      FROM MGENERAL.GEN_AGENDA_PARAMETRO G
+      WHERE G.AGENDA_ID = p_agendaId;
+  BEGIN
+      OUT_COD_RESPUESTA := 'BIEN';
+      FOR REG_PARAMETROS IN CUR_PARAMETROS_AGENDA(IN_AGENDA_ID) LOOP
+              
+           IF (REG_PARAMETROS.NOMBRE = 'IN_USUARIO_ID') THEN 
+              l_usuario := REG_PARAMETROS.VALOR;
+           ELSIF (REG_PARAMETROS.NOMBRE = 'IN_PERIODO') THEN   
+              l_periodo := REG_PARAMETROS.VALOR;
+           ELSIF (REG_PARAMETROS.NOMBRE = 'IN_SOLICITUD') THEN
+              l_solicitudId := REG_PARAMETROS.VALOR;
+           ELSIF (REG_PARAMETROS.NOMBRE = 'IN_ES_SIMULACION') THEN
+              l_esSimulacion := REG_PARAMETROS.VALOR;
+           ELSIF (REG_PARAMETROS.NOMBRE = 'IN_TIPO_PAGO') THEN
+              l_tipoPago := REG_PARAMETROS.VALOR;
+           END IF;  
+                      
+      END LOOP;
+      
+      IF (l_tipoPago IS NULL) THEN
+          l_observaciones := 'ERROR [Tipo de pago invalido, Indicar el tipo de pago] - VALOR OBTENIDO['||l_tipoPago||'] - POSIBLES VALORES [RETIRO_PROGRAMADO]';
+          ACTUALIZAR_AGENDA (IN_AGENDA_ID,
+                            C_ESTADO_AGENDA_TERMINADO,
+                            NVL(l_usuario,USER),
+                            NULL, 
+                            SYSDATE,
+                            l_observaciones,
+                            C_CICLO_FINALIZAR_PROCESO, 'NO');
+         RAISE_APPLICATION_ERROR (-20001, l_observaciones);                     
+       ELSIF (l_periodo IS NULL) THEN
+          l_observaciones := 'ERROR [Periodo invalido, Indicar el periodo] - VALOR OBTENIDO['||l_periodo||'] - POSIBLES VALORES [valor con formato AAAAMM]';
+                 
+          ACTUALIZAR_AGENDA (IN_AGENDA_ID,
+                            C_ESTADO_AGENDA_TERMINADO,
+                            NVL(l_usuario,USER),
+                            NULL, 
+                            SYSDATE,
+                            l_observaciones,
+                            C_CICLO_FINALIZAR_PROCESO, 'NO');   
+           RAISE_APPLICATION_ERROR (-20001, l_observaciones);                         
+      ELSIF (l_esSimulacion IS NULL) THEN
+          l_observaciones := 'ERROR [EsSimulacion, Indicar si es simulacion o no] - VALOR OBTENIDO['||l_esSimulacion||'] - POSIBLES VALORES [S o N]';
+          
+          ACTUALIZAR_AGENDA (IN_AGENDA_ID,
+                            C_ESTADO_AGENDA_TERMINADO,
+                            NVL(l_usuario,USER),
+                            NULL, 
+                            SYSDATE,
+                            l_observaciones,
+                            C_CICLO_FINALIZAR_PROCESO, 'NO');  
+          RAISE_APPLICATION_ERROR (-20001, l_observaciones);                          
+       END IF;
+       
+      MNOMPEN.NOMP_PRELIQUIDACION_NOMINA_PCK.PRELIQUIDACION_NOMINA_SP(l_solicitudId,
+                                                                       l_tipoPago,
+                                                                       l_periodo,
+                                                                       'N',
+                                                                       l_esSimulacion,
+                                                                       NVL(l_usuario,USER),
+                                                                       l_mesadaRespuesta,
+                                                                       l_mensajeRespuesta);
+                                    
+            IF ( l_mensajeRespuesta = 'BIEN') THEN
+              l_observaciones := 'EJECUCION CORRECTA DEL PRELIQUIDADOR - PERIODO['||l_periodo||'],SOLICITUD['||l_solicitudId||'],TIPO_PAGO['||l_tipoPago||'], ESSIMULACION['||l_esSimulacion||']';
+                            
+              ACTUALIZAR_AGENDA (IN_AGENDA_ID,
+                              C_ESTADO_AGENDA_TERMINADO,
+                              NVL(l_usuario,USER),
+                              NULL, 
+                              SYSDATE,
+                              l_observaciones,
+                              C_CICLO_FINALIZAR_PROCESO, 'NO');  
+            ELSE  
+                l_observaciones := 'ERROR EJECUTANDO EL PRELIQUIDADOR - VALIDAR LOG - '||l_mensajeRespuesta;
+               
+                ACTUALIZAR_AGENDA (IN_AGENDA_ID,
+                                  C_ESTADO_AGENDA_TERMINADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_FINALIZAR_PROCESO, 'NO');  
+            END IF;                                                    
+                                                                             
+  EXCEPTION WHEN OTHERS THEN
+    OUT_COD_RESPUESTA := 'MAL';
+    OUT_MENSAJE := 'ERROR EN EL PROCESO DE PRELIQUIDACION , Error: ['|| SQLERRM ||'] - Traza['||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE||']' ; 
+  END;    
+  
+  
+  PROCEDURE EJECUTAR_PROCESO_NOMINA(IN_PROCESO_ID IN NUMBER,
+                                    OUT_COD_RESPUESTA OUT VARCHAR2,
+                                    OUT_MENSAJE OUT VARCHAR2) 
+  IS 
+    l_agendaId MGENERAL.GEN_AGENDA.AGENDA_ID%TYPE := 0;
+    C_PROCESO_MOTOR_NOMINA CONSTANT NUMBER DEFAULT 10000;
+    C_PROCESO_ACT_PRELIQUIDACION CONSTANT NUMBER DEFAULT 10002;
+    C_PROCESO_APROB_PRELIQUIDACION CONSTANT NUMBER DEFAULT 10005;
+    l_observaciones  VARCHAR2(4000);
+    l_casosFondo     NUMBER;
+    l_casosSociedad  NUMBER;
+    
+    --PARAMETRO PROCESO 10000 Y 10002
+     l_usuario          VARCHAR2(30);
+     l_periodo          NUMBER;
+    --PARAMETRO PROCESO 10000 
+     l_tipoPago         VARCHAR2(30);
+     l_solicitudId      NUMBER;
+     l_esSimulacion     VARCHAR2(5);
+     --PARAMETROS PROCESO 10002
+     l_estadoAnterior   VARCHAR2(30);
+     l_estadoNuevo      VARCHAR2(30);
+     l_casosNomina      VARCHAR2(10000);
+     
+     l_codRespuesta     NUMBER;
+     l_mensajeRespuesta VARCHAR2(4000);
+    
+    CURSOR CUR_PARAMETROS_AGENDA(p_agendaId IN NUMBER)
+    IS
+      SELECT G.NOMBRE,G.VALOR,G.TIPO_PARAMETRO
+      FROM MGENERAL.GEN_AGENDA_PARAMETRO G
+      WHERE G.AGENDA_ID = p_agendaId;
+    
+  BEGIN 
+       OUT_COD_RESPUESTA := 'BIEN';
+       BEGIN 
+          SELECT G.AGENDA_ID
+          INTO l_agendaId
+          FROM  MGENERAL.GEN_AGENDA G
+          WHERE G.PROCESO_ID = IN_PROCESO_ID
+          AND G.ESTADO = 'REGISTRADO'
+          AND ROWNUM <= 1
+          ORDER BY G.AGENDA_ID ASC;
+       EXCEPTION WHEN OTHERS THEN
+           l_agendaId := 0;
+       END;
+     
+       IF(l_agendaId = 0) THEN
+         OUT_COD_RESPUESTA := 'MAL';
+         OUT_MENSAJE := 'NO EXISTE UNA AGENDA REGISTRADA ACTIVA PARA EL PROCESO ['||IN_PROCESO_ID||']';
+       ELSE
+         ACTUALIZAR_AGENDA (l_agendaId,
+                            C_ESTADO_AGENDA_REGISTRADO,
+                            USER,
+                            NULL, 
+                            NULL,
+                            NULL,
+                            C_CICLO_INICIALIZANDO_PROCESO,'SI');
+                            
+         IF(IN_PROCESO_ID IN (C_PROCESO_ACT_PRELIQUIDACION,C_PROCESO_APROB_PRELIQUIDACION) )THEN
+         
+           FOR REG_PARAMETROS IN CUR_PARAMETROS_AGENDA(l_agendaId) LOOP
+             IF (REG_PARAMETROS.NOMBRE = 'IN_USUARIO') THEN 
+                l_usuario := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_PERIODO') THEN   
+                l_periodo := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_ESTADO_ANT') THEN
+                l_estadoAnterior := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_ESTADO_NUEVO') THEN
+                l_estadoNuevo := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_CASOS_NOMINA') THEN
+                l_casosNomina := REG_PARAMETROS.VALOR;
+             END IF;           
+           END LOOP;
+           
+
+           
+            IF (l_estadoAnterior IS NULL) THEN
+                 
+                l_observaciones := 'ERROR [Estado anterior invalido, Indicar el Estado anterior] - VALOR OBTENIDO['||l_estadoAnterior||'] - POSIBLES VALORES [APROBADO]';
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC,'SI');
+                RAISE_APPLICATION_ERROR (-20001, l_observaciones);                  
+             ELSIF (l_estadoNuevo IS NULL) THEN
+                l_observaciones := 'ERROR [Estado nuevo, Indicar el Estado nuevo] - VALOR OBTENIDO['||l_estadoNuevo||'] - POSIBLES VALORES [AUTORIZADO]';
+               
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC,'SI'); 
+                 RAISE_APPLICATION_ERROR (-20001, l_observaciones);         
+            ELSIF (l_periodo IS NULL) THEN
+                l_observaciones := 'ERROR [Periodo invalido, Indicar el periodo] - VALOR OBTENIDO['||l_periodo||'] - POSIBLES VALORES [valor con formato AAAAMM]';
+                  
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC,'SI');  
+                 RAISE_APPLICATION_ERROR (-20001, l_observaciones);                         
+             END IF;
+             
+             
+             ACTUALIZAR_AGENDA (l_agendaId,
+                            C_ESTADO_AGENDA_EJECUTANDO,
+                            NVL(l_usuario,USER),
+                            SYSDATE, 
+                            NULL,
+                            NULL,
+                            C_CICLO_INICIAR_CICLO,'SI');
+                            
+             MNOMPEN.NOMP_PRELIQUIDACION_NOMINA_PCK.ACTUALIZAR_PRELIQUIDACION_SP(l_usuario,
+                                         C_FUENTE_PAGO_FONDO,
+                                         l_periodo,
+                                         l_estadoAnterior,
+                                         l_estadoNuevo,
+                                         l_casosNomina,
+                                         l_codRespuesta,
+                                         l_mensajeRespuesta);
+                                         
+            IF (l_codRespuesta < 0) THEN
+                l_observaciones := 'ERROR [Actualizando FONDO] - '||l_mensajeRespuesta;
+                OUT_COD_RESPUESTA := 'MAL';    
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC,'SI');                     
+            ELSE  
+                 l_casosFondo:= l_codRespuesta;
+                   
+                 MNOMPEN.NOMP_PRELIQUIDACION_NOMINA_PCK.ACTUALIZAR_PRELIQUIDACION_SP(l_usuario,
+                                         C_FUENTE_PAGO_SOCIEDAD,
+                                         l_periodo,
+                                         l_estadoAnterior,
+                                         l_estadoNuevo,
+                                         l_casosNomina,
+                                         l_codRespuesta,
+                                         l_mensajeRespuesta); 
+                                         
+                  IF (l_codRespuesta < 0) THEN
+                     l_observaciones := 'ERROR [Actualizando SOCIEDAD] - '||l_mensajeRespuesta;
+                     OUT_COD_RESPUESTA := 'MAL';
+                        ACTUALIZAR_AGENDA (l_agendaId,
+                                          C_ESTADO_AGENDA_ABORTADO,
+                                          NVL(l_usuario,USER),
+                                          NULL, 
+                                          SYSDATE,
+                                          l_observaciones,
+                                          C_CICLO_ABORTA_INTERNO_PROC,'SI');                       
+                  ELSE      
+                        l_casosSociedad:= l_codRespuesta;  
+                        l_observaciones := 'Casos Actualizados [FONDO = '||l_casosFondo||'] - [SOCIEDAD = '||l_casosSociedad||']';                      
+                        ACTUALIZAR_AGENDA (l_agendaId,
+                                        C_ESTADO_AGENDA_TERMINADO,
+                                        NVL(l_usuario,USER),
+                                        NULL, 
+                                        SYSDATE,
+                                        l_observaciones,
+                                        C_CICLO_FINALIZAR_PROCESO,'SI');  
+                  END IF;                                               
+            END IF;     
+      ELSIF(IN_PROCESO_ID = C_PROCESO_MOTOR_NOMINA) THEN
+
+
+            FOR REG_PARAMETROS IN CUR_PARAMETROS_AGENDA(l_agendaId) LOOP
+              
+             IF (REG_PARAMETROS.NOMBRE = 'IN_USUARIO_ID') THEN 
+                l_usuario := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_PERIODO') THEN   
+                l_periodo := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_SOLICITUD') THEN
+                l_solicitudId := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_ES_SIMULACION') THEN
+                l_esSimulacion := REG_PARAMETROS.VALOR;
+             ELSIF (REG_PARAMETROS.NOMBRE = 'IN_TIPO_PAGO') THEN
+                l_tipoPago := REG_PARAMETROS.VALOR;
+             END IF;           
+           END LOOP;
+           
+
+           
+            IF (l_tipoPago IS NULL) THEN
+                l_observaciones := 'ERROR [Tipo de pago invalido, Indicar el tipo de pago] - VALOR OBTENIDO['||l_tipoPago||'] - POSIBLES VALORES [RETIRO_PROGRAMADO]';
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC, 'SI');
+                 RAISE_APPLICATION_ERROR (-20001, l_observaciones);                   
+             ELSIF (l_periodo IS NULL) THEN
+                l_observaciones := 'ERROR [Periodo invalido, Indicar el periodo] - VALOR OBTENIDO['||l_periodo||'] - POSIBLES VALORES [valor con formato AAAAMM]';
+                    
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC, 'SI'); 
+                 RAISE_APPLICATION_ERROR (-20001, l_observaciones);                           
+            ELSIF (l_esSimulacion IS NULL) THEN
+                l_observaciones := 'ERROR [EsSimulacion, Indicar si es simulacion o no] - VALOR OBTENIDO['||l_esSimulacion||'] - POSIBLES VALORES [S o N]';
+                
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC, 'SI');
+                 RAISE_APPLICATION_ERROR (-20001, l_observaciones);                           
+             END IF;
+             
+             
+             ACTUALIZAR_AGENDA (l_agendaId,
+                            C_ESTADO_AGENDA_EJECUTANDO,
+                            NVL(l_usuario,USER),
+                            SYSDATE, 
+                            NULL,
+                            NULL,
+                            C_CICLO_INICIAR_CICLO, 'SI');
+                            
+             MNOMPEN.NOMP_MOTOR_NOM_PENSIONADOS_PCK.INVOCAR_PROCESO(l_solicitudId,
+                                                                    l_tipoPago,
+                                                                    l_periodo,
+                                                                    'SIM',
+                                                                    l_mensajeRespuesta);
+                                         
+            IF ( l_mensajeRespuesta = 'MAL') THEN
+                l_observaciones := 'ERROR EJECUTANDO EL MOTOR - VALIDAR LOG - '||l_mensajeRespuesta;
+               
+                ACTUALIZAR_AGENDA (l_agendaId,
+                                  C_ESTADO_AGENDA_ABORTADO,
+                                  NVL(l_usuario,USER),
+                                  NULL, 
+                                  SYSDATE,
+                                  l_observaciones,
+                                  C_CICLO_ABORTA_INTERNO_PROC, 'SI');  
+            ELSE  
+              
+              l_observaciones := 'EJECUCION CORRECTA DEL MOTOR DE NOMINA - PERIODO['||l_periodo||'],SOLICITUD['||l_solicitudId||'],TIPO_PAGO['||l_tipoPago||'], ESSIMULACION['||l_esSimulacion||']';
+                            
+              ACTUALIZAR_AGENDA (l_agendaId,
+                              C_ESTADO_AGENDA_TERMINADO,
+                              NVL(l_usuario,USER),
+                              NULL, 
+                              SYSDATE,
+                              l_observaciones,
+                              C_CICLO_FINALIZAR_PROCESO, 'SI');  
+                                               
+            END IF;  
+      END IF;
+        OUT_MENSAJE := 'AGENDA_ID:'||l_agendaId;  
+    END IF; 
+  EXCEPTION WHEN OTHERS THEN
+    OUT_COD_RESPUESTA := 'MAL';
+    OUT_MENSAJE := 'ERROR EN LA EJECUCION DEL PROCESO['||IN_PROCESO_ID||'], Error: ['|| SQLERRM ||'] - Traza['||DBMS_UTILITY.FORMAT_ERROR_BACKTRACE||']' ; 
+                                   
+  END EJECUTAR_PROCESO_NOMINA;
+  
+  /*----------------------------------------------------------------------------------
+  *                       PROCEDIMIENTO AGENDAR_PROCESO_SAAP
+  *----------------------------------------------------------------------------------
+  * CREACION
+  *    AUTOR   : POR07096 Jair Prieto
+  *    FECHA   : Mayo 2021
+  * OBJETIVO   : Proceso encagado de agendar los proceso 4426 y 4413
+  *--------------------------------------------------------------------------------------*/    
+  
+  PROCEDURE AGENDAR_PROCESO_SAAP(IN_PROCESO_ID       IN NUMBER,
+                                 IN_CLASE_PAGO_ID    IN VARCHAR2,
+                                 IN_PAGINA_ID        IN VARCHAR2,
+                                 IN_DESCRIPCION      IN VARCHAR2,
+                                 IN_EXECUTION_DATE   IN DATE,
+                                 OUT_AGENDA_ID       OUT NUMBER,
+                                 OUT_MENSAJE_PROCESO OUT VARCHAR2) IS
+    
+    L_REG_AGENDA            MGENERAL.GEN_AGENDA%ROWTYPE;
+    L_REQUIERE_CONFIRMACION MGENERAL.GEN_PROCESO.REQUIERE_CONFIRMACION%TYPE;
+    L_CONSOLA               MGENERAL.GEN_PROCESO.CONSOLA%TYPE;
+    
+  BEGIN
+    
+    SELECT PRO.REQUIERE_CONFIRMACION, PRO.CONSOLA
+      INTO L_REQUIERE_CONFIRMACION, L_CONSOLA
+      FROM MGENERAL.GEN_PROCESO PRO
+     WHERE PRO.PROCESO_ID = IN_PROCESO_ID;
+    
+    IF L_REQUIERE_CONFIRMACION IS NOT NULL AND
+       L_REQUIERE_CONFIRMACION = 'N' THEN
+      L_REG_AGENDA.ESTADO := 'REGISTRADO';
+    ELSE
+      L_REG_AGENDA.ESTADO := 'PENDIENTE';
+    END IF;
+    
+    L_REG_AGENDA.PROCESO_ID          := IN_PROCESO_ID;
+    L_REG_AGENDA.DESCRIPCION         := IN_DESCRIPCION;
+    L_REG_AGENDA.USUARIO_ID          := USER;
+    L_REG_AGENDA.EXECUTION_DATE      := IN_EXECUTION_DATE;
+    L_REG_AGENDA.FECHA_ULTIMO_ESTADO := SYSDATE;
+    L_REG_AGENDA.NUMERO_REINTENTOS   := 1;
+    L_REG_AGENDA.TIEMPO_REINTENTOS   := 5;
+    L_REG_AGENDA.TIPO_REPETICION     := 'SOLO ESTA VEZ';
+    L_REG_AGENDA.MISMA_HORA          := 'N';
+    L_REG_AGENDA.FECHA_CREACION      := SYSDATE;
+    L_REG_AGENDA.CONSOLA             := L_CONSOLA;
+    L_REG_AGENDA.MFONDOS_SCN         := 0;
+    L_REG_AGENDA.USUARIO_CREACION    := USER;
+    
+    INSERT INTO MGENERAL.GEN_AGENDA
+      (AGENDA_ID,
+       PROCESO_ID,
+       DESCRIPCION,
+       USUARIO_ID,
+       EXECUTION_DATE,
+       ESTADO,
+       FECHA_ULTIMO_ESTADO,
+       NUMERO_REINTENTOS,
+       TIEMPO_REINTENTOS,
+       TIPO_REPETICION,
+       MFONDOS_SCN,
+       USUARIO_CREACION,
+       FECHA_CREACION,
+       MISMA_HORA,
+       CONSOLA)
+    VALUES
+      (MGENERAL.GEN_AGENDA_SEQ.NEXTVAL,
+       L_REG_AGENDA.PROCESO_ID,
+       L_REG_AGENDA.DESCRIPCION,
+       L_REG_AGENDA.USUARIO_ID,
+       L_REG_AGENDA.EXECUTION_DATE,
+       L_REG_AGENDA.ESTADO,
+       L_REG_AGENDA.FECHA_ULTIMO_ESTADO,
+       L_REG_AGENDA.NUMERO_REINTENTOS,
+       L_REG_AGENDA.TIEMPO_REINTENTOS,
+       L_REG_AGENDA.TIPO_REPETICION,
+       L_REG_AGENDA.MFONDOS_SCN,
+       L_REG_AGENDA.USUARIO_CREACION,
+       L_REG_AGENDA.FECHA_CREACION,
+       L_REG_AGENDA.MISMA_HORA,
+       L_REG_AGENDA.CONSOLA)
+    RETURNING GEN_AGENDA.AGENDA_ID INTO OUT_AGENDA_ID;
+    
+    INSERT INTO MGENERAL.GEN_AGENDA_PARAMETRO
+      (AGENDA_ID,
+       NOMBRE,
+       VALOR,
+       TIPO_PARAMETRO,
+       MFONDOS_SCN,
+       USUARIO_CREACION,
+       FECHA_CREACION)
+    VALUES
+      (OUT_AGENDA_ID,
+       'CLASE_PAGO_ID',
+       IN_CLASE_PAGO_ID,
+       'P',
+       0,
+       USER,
+       SYSDATE);
+    
+    INSERT INTO MGENERAL.GEN_AGENDA_PARAMETRO
+      (AGENDA_ID,
+       NOMBRE,
+       VALOR,
+       TIPO_PARAMETRO,
+       MFONDOS_SCN,
+       USUARIO_CREACION,
+       FECHA_CREACION)
+    VALUES
+      (OUT_AGENDA_ID, 'PROCESO_ID', IN_PAGINA_ID, 'P', 0, USER, SYSDATE);
+    
+    INSERT INTO MGENERAL.GEN_AGENDA_OBSERVACIONES
+      (AGENDA_ID,
+       SECUENCIA,
+       OBSERVACIONES,
+       CICLO_VIDA,
+       TRAZA_TECNICA,
+       USUARIO_CREACION,
+       FECHA_CREACION,
+       MFONDOS_SCN,
+       ULTIMO_ESTADO_PROCESO)
+    VALUES
+      (OUT_AGENDA_ID,
+       MGENERAL.GEN_AGENDA_OBSERVACIONES_SEQ.NEXTVAL,
+       'SE SOLICITA EL REGISTRO DEL AGENDAMIENTO',
+       'REGISTRO_AGENDA',
+       OUT_AGENDA_ID,
+       USER,
+       SYSDATE,
+       0,
+       L_REG_AGENDA.ESTADO);
+    
+  EXCEPTION
+    WHEN OTHERS THEN
+      OUT_AGENDA_ID       := 0;
+      OUT_MENSAJE_PROCESO := REPLACE(REPLACE(DBMS_UTILITY.FORMAT_ERROR_STACK || '-' ||
+                                             DBMS_UTILITY.FORMAT_ERROR_BACKTRACE,
+                                             CHR(13),
+                                             ' '),
+                                     CHR(10),
+                                     ' ');
+  END;
+  
+  /*----------------------------------------------------------------------------------
+  *                       PROCEDIMIENTO AGENDA_ENVIO_SAAP_X_PAG
+  *----------------------------------------------------------------------------------
+  * CREACION
+  *    AUTOR   : POR07096 Jair Prieto
+  *    FECHA   : Mayo 2021
+  * OBJETIVO   : Proceso encagado de generar envio a saap por pagina de nomina pensional*
+  *--------------------------------------------------------------------------------------*/  
+  PROCEDURE AGENDA_ENVIO_SAAP_X_PAG(OUT_COD_RESPUESTA OUT VARCHAR2,
+                                    OUT_MENSAJE       OUT VARCHAR2) IS
+
+    CON_PROCESO_ENVIO_SAAP CONSTANT NUMBER DEFAULT 3;
+    CON_ESTADO_PAG_NUEVO   CONSTANT NUMBER DEFAULT 1;
+    CON_PROCESO_4413       CONSTANT NUMBER DEFAULT 4413;
+    CON_PROCESO_4426       CONSTANT NUMBER DEFAULT 4426;
+    contProceso            number :=0;
+    C_MODULO_PENS_GESTION CONSTANT NUMBER(10) DEFAULT 2400;
+    C_FONDO_PENSION_OBLIG CONSTANT NUMBER(2) DEFAULT 1;
+    C_PARAMETRO_FONDO     CONSTANT VARCHAR2(20) DEFAULT 'NIT_FONDO';
+    C_PARAMETRO_SOCIEDAD  CONSTANT VARCHAR2(20) DEFAULT 'NIT_SOCIEDAD';
+    G_DESC_PROCESO_4413  VARCHAR2(50) := 'OBLIGATORIAS BENEFICIOS - SAAP';
+    G_DESC_PROCESO_4426  VARCHAR2(50) := 'PAGOS CUENTAS POR COBRAR -SAAP';
+    G_AGENDA_ID          NUMBER;
+    G_MENSAJE_PROCESO    VARCHAR2(4000);
+    G_NOMBRE_ARCHIVO     VARCHAR2(50) := 'LOG_AGENDAMIENTO_ENVIO_SAAP_' ||
+                                         TO_CHAR(SYSDATE, 'YYYYMMDDHH24MI') ||
+                                         '.txt';
+    G_DIRECTORIO_ARCHIVO VARCHAR2(100) := MPENGES.SPG_UTIL_PCK.DARPARAMETRO('DIR_SERVICIOS_PENSIONALES');
+    G_ARCHIVO            UTL_FILE.FILE_TYPE;
+  
+    l_nitFondo             NUMBER(20);
+    l_nitSociedad          NUMBER(20);
+    l_tienePagoFondo       NUMBER(20);
+    l_tienePagoSociedad    NUMBER(20);
+    l_tieneEmbargoFondo       NUMBER(20);
+    l_tieneEmbargoSociedad    NUMBER(20);
+    l_noTieneEmbargoFondo       NUMBER(20);
+    l_noTieneEmbargoSociedad    NUMBER(20);
+    L_PROCESO_4413              NUMBER(10);
+
+    --CURSOR DE PAGINAS PENDIENTES
+    CURSOR CUR_PAGINAS_PENDIENTES IS
+      SELECT BP.PAGINACION_ID
+        FROM MNOMPEN.NOMP_BAT_PAGINACION BP
+       WHERE BP.PROCESO_ID = CON_PROCESO_ENVIO_SAAP
+         AND BP.ESTADO_PAGINACION_ID = CON_ESTADO_PAG_NUEVO;
+
+  BEGIN
+
+    -- SE OBTIENE EL NIT DEL FONDO Y SOCIEDAD
+   l_nitFondo             := TO_NUMBER(NVL(MNOMPEN.NOMP_LIQUIDACION_NOMINA_PCK.OBTENER_VALOR_GEN_PARAMETRO(C_FONDO_PENSION_OBLIG,C_MODULO_PENS_GESTION,C_PARAMETRO_FONDO),0));
+   l_nitSociedad          := TO_NUMBER(NVL(MNOMPEN.NOMP_LIQUIDACION_NOMINA_PCK.OBTENER_VALOR_GEN_PARAMETRO(C_FONDO_PENSION_OBLIG,C_MODULO_PENS_GESTION,C_PARAMETRO_SOCIEDAD),0)); 
+                   
+    G_ARCHIVO := UTL_FILE.FOPEN(G_DIRECTORIO_ARCHIVO,
+                                G_NOMBRE_ARCHIVO,
+                                'w',
+                                2048);
+    OUT_MENSAJE := '----- INICIA AGENDAMIENTO PROCESO ENVIO_SAAP [' ||
+                 TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') || '] -----';
+    UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+    
+    FOR REG_PAGPENDIENTE IN CUR_PAGINAS_PENDIENTES LOOP
+      
+    contProceso := contProceso +1;
+    
+    IF contProceso = 1
+      THEN
+        
+          L_PROCESO_4413 := 4413;
+        
+    ELSIF contProceso = 2
+      THEN
+       
+          L_PROCESO_4413 := 44132;
+        
+    ELSIF contProceso = 3
+       THEN
+         
+          L_PROCESO_4413 := 44133;
+         
+    ELSIF contProceso = 4
+      THEN
+        
+          L_PROCESO_4413 := 44134;
+      
+    ELSIF contProceso = 5
+      THEN
+        
+          L_PROCESO_4413 := 44135;
+          contProceso      := 0;
+      
+     ELSE 
+       
+         contProceso := 0; 
+           
+      END IF;   
+      
+    
+    
+      BEGIN
+          select count(d.detalle_pago_id) into l_tienePagoFondo
+          from mnompen.nomp_bat_paginacion b, 
+              mnompen.nomp_pagos_saap_tmp t, 
+              mpenges.spg_detalle_pago d,
+              mpenges.spg_pago p,
+              mpenges.spg_cuenta_por_pagar cxp
+          where t.pago_id = d.detalle_pago_id 
+          and d.pago_id = p.pago_id
+          and p.cuenta_por_pagar_id = cxp.cuenta_por_pagar_id
+          and cxp.nit_pagador = l_nitFondo
+          and t.tmp_id between b.id_inicio and b.id_fin
+          and b.paginacion_id = REG_PAGPENDIENTE.PAGINACION_ID;
+      EXCEPTION WHEN OTHERS THEN
+          l_tienePagoFondo :=0;
+      END;  
+      
+      BEGIN
+          select count(d.detalle_pago_id) into l_tienePagoSociedad
+          from mnompen.nomp_bat_paginacion b, 
+              mnompen.nomp_pagos_saap_tmp t, 
+              mpenges.spg_detalle_pago d,
+              mpenges.spg_pago p,
+              mpenges.spg_cuenta_por_pagar cxp
+          where t.pago_id = d.detalle_pago_id 
+          and d.pago_id = p.pago_id
+          and p.cuenta_por_pagar_id = cxp.cuenta_por_pagar_id
+          and cxp.nit_pagador = l_nitSociedad
+          and t.tmp_id between b.id_inicio and b.id_fin
+          and b.paginacion_id = REG_PAGPENDIENTE.PAGINACION_ID;
+      EXCEPTION WHEN OTHERS THEN
+          l_tienePagoSociedad :=0;
+      END;  
+    
+      IF (l_tienePagoFondo > 0) THEN
+        
+           BEGIN  
+             select  count(d.detalle_pago_id) into l_tieneEmbargoFondo
+             from mnompen.nomp_bat_paginacion b, 
+                  mnompen.nomp_pagos_saap_tmp t, 
+                  mpenges.spg_detalle_pago d,
+                  mpenges.spg_descuento_adicional de,
+                  mpenges.spg_pago p,
+                  mpenges.spg_cuenta_por_pagar cxp
+              where t.pago_id = d.detalle_pago_id 
+              and d.descuento_adicional_id =  de.descuento_adicional_id
+              and d.pago_id = p.pago_id
+              and p.cuenta_por_pagar_id = cxp.cuenta_por_pagar_id
+              and de.tipo_descuento_id = 'EMBARGO'
+              and cxp.nit_pagador = l_nitFondo
+              and t.tmp_id between b.id_inicio and b.id_fin
+              and b.paginacion_id = REG_PAGPENDIENTE.PAGINACION_ID;
+          EXCEPTION WHEN OTHERS THEN
+            l_tieneEmbargoFondo :=0;
+          END;  
+          
+          IF(l_tieneEmbargoFondo > 0) THEN
+              --SE AGENDA EL PROCESO  4413 CON LA CLASE_PAGO 60                         
+              AGENDAR_PROCESO_SAAP(L_PROCESO_4413,
+                                   103,
+                                   REG_PAGPENDIENTE.PAGINACION_ID,
+                                   G_DESC_PROCESO_4413,
+                                   SYSDATE,
+                                   G_AGENDA_ID,
+                                   G_MENSAJE_PROCESO);
+            
+              OUT_MENSAJE := '[' || TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') ||
+                           '] ----- PAGINA_ID[' || REG_PAGPENDIENTE.PAGINACION_ID ||
+                           '] - PROCESO[' || L_PROCESO_4413 ||
+                           '], CLASE_PAGO[60] - AGENDA_ID[' || G_AGENDA_ID ||
+                           '], RESPUESTA_PROCESO [' || G_MENSAJE_PROCESO || ']';
+              UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+              
+               --SE AGENDA EL PROCESO  4413 CON LA CLASE_PAGO 103                        
+              AGENDAR_PROCESO_SAAP(L_PROCESO_4413,
+                                   60,
+                                   REG_PAGPENDIENTE.PAGINACION_ID,
+                                   G_DESC_PROCESO_4413,
+                                   SYSDATE,
+                                   G_AGENDA_ID,
+                                   G_MENSAJE_PROCESO);
+            
+              OUT_MENSAJE := '[' || TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') ||
+                           '] ----- PAGINA_ID[' || REG_PAGPENDIENTE.PAGINACION_ID ||
+                           '] - PROCESO[' || L_PROCESO_4413 ||
+                           '], CLASE_PAGO[60] - AGENDA_ID[' || G_AGENDA_ID ||
+                           '], RESPUESTA_PROCESO [' || G_MENSAJE_PROCESO || ']';
+              UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+          END IF;   
+           
+          l_noTieneEmbargoFondo :=  l_tienePagoFondo - l_tieneEmbargoFondo;
+          
+          IF(l_noTieneEmbargoFondo > 0) THEN
+              --SE AGENDA EL PROCESO  4413 CON LA CLASE_PAGO 20
+              AGENDAR_PROCESO_SAAP(L_PROCESO_4413,
+                                   20,
+                                   REG_PAGPENDIENTE.PAGINACION_ID,
+                                   G_DESC_PROCESO_4413,
+                                   (sysdate + 150 / 86400),
+                                   G_AGENDA_ID,
+                                   G_MENSAJE_PROCESO);
+            
+              OUT_MENSAJE := '[' || TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') ||
+                           '] ----- PAGINA_ID[' || REG_PAGPENDIENTE.PAGINACION_ID ||
+                           '] - PROCESO[' || L_PROCESO_4413 ||
+                           '], CLASE_PAGO[20] - AGENDA_ID[' || G_AGENDA_ID ||
+                           '], RESPUESTA_PROCESO [' || G_MENSAJE_PROCESO || ']';
+              UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+              
+              
+          END IF;
+         
+      END IF; 
+      
+      IF (l_tienePagoSociedad > 0) THEN
+        
+        BEGIN  
+             select  count(d.detalle_pago_id) into l_tieneEmbargoSociedad
+             from mnompen.nomp_bat_paginacion b, 
+                  mnompen.nomp_pagos_saap_tmp t, 
+                  mpenges.spg_detalle_pago d,
+                  mpenges.spg_descuento_adicional de,
+                  mpenges.spg_pago p,
+                  mpenges.spg_cuenta_por_pagar cxp
+              where t.pago_id = d.detalle_pago_id 
+              and d.descuento_adicional_id =  de.descuento_adicional_id
+              and d.pago_id = p.pago_id
+              and p.cuenta_por_pagar_id = cxp.cuenta_por_pagar_id
+              and de.tipo_descuento_id = 'EMBARGO'
+              and cxp.nit_pagador = l_nitSociedad
+              and t.tmp_id between b.id_inicio and b.id_fin
+              and b.paginacion_id = REG_PAGPENDIENTE.PAGINACION_ID;
+          EXCEPTION WHEN OTHERS THEN
+            l_tieneEmbargoSociedad :=0;
+          END;   
+          
+          IF(l_tieneEmbargoSociedad > 0) THEN
+              --SE AGENDA EL PROCESO  4426 CON LA CLASE_PAGO 74                        
+              AGENDAR_PROCESO_SAAP(CON_PROCESO_4426,
+                                   104,
+                                   REG_PAGPENDIENTE.PAGINACION_ID,
+                                   G_DESC_PROCESO_4426,
+                                   SYSDATE,
+                                   G_AGENDA_ID,
+                                   G_MENSAJE_PROCESO);
+            
+              OUT_MENSAJE := '[' || TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') ||
+                           '] ----- PAGINA_ID[' || REG_PAGPENDIENTE.PAGINACION_ID ||
+                           '] - PROCESO[' || CON_PROCESO_4426 ||
+                           '], CLASE_PAGO[74] - AGENDA_ID[' || G_AGENDA_ID ||
+                           '], RESPUESTA_PROCESO [' || G_MENSAJE_PROCESO || ']';
+              UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+              
+               --SE AGENDA EL PROCESO  4426 CON LA CLASE_PAGO 104                        
+              AGENDAR_PROCESO_SAAP(CON_PROCESO_4426,
+                                   74,
+                                   REG_PAGPENDIENTE.PAGINACION_ID,
+                                   G_DESC_PROCESO_4426,
+                                   SYSDATE,
+                                   G_AGENDA_ID,
+                                   G_MENSAJE_PROCESO);
+            
+              OUT_MENSAJE := '[' || TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') ||
+                           '] ----- PAGINA_ID[' || REG_PAGPENDIENTE.PAGINACION_ID ||
+                           '] - PROCESO[' || CON_PROCESO_4426 ||
+                           '], CLASE_PAGO[74] - AGENDA_ID[' || G_AGENDA_ID ||
+                           '], RESPUESTA_PROCESO [' || G_MENSAJE_PROCESO || ']';
+              UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+          END IF;    
+          
+           l_noTieneEmbargoSociedad :=  l_tienePagoSociedad - l_tieneEmbargoSociedad;
+          
+          IF(l_noTieneEmbargoSociedad > 0) THEN
+              --SE AGENDA EL PROCESO  4426 CON LA CLASE_PAGO 70 ---                       
+              AGENDAR_PROCESO_SAAP(CON_PROCESO_4426,
+                                   70,
+                                   REG_PAGPENDIENTE.PAGINACION_ID,
+                                   G_DESC_PROCESO_4426,
+                                   (sysdate + 120 / 86400),
+                                   G_AGENDA_ID,
+                                   G_MENSAJE_PROCESO);
+            
+              OUT_MENSAJE := '[' || TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') ||
+                           '] ----- PAGINA_ID[' || REG_PAGPENDIENTE.PAGINACION_ID ||
+                           '] - PROCESO[' || CON_PROCESO_4426 ||
+                           '], CLASE_PAGO[70] - AGENDA_ID[' || G_AGENDA_ID ||
+                           '], RESPUESTA_PROCESO [' || G_MENSAJE_PROCESO || ']';
+              UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+         END IF;          
+      END IF;  
+      
+      COMMIT;
+    END LOOP;
+
+    OUT_MENSAJE := '----- FINALIZA AGENDAMIENTO PROCESO ENVIO_SAAP [' ||
+                 TO_CHAR(SYSTIMESTAMP, 'YYYY-MM-DD HH24:MI.SS') || '] -----';
+    UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+    UTL_FILE.FCLOSE(G_ARCHIVO);
+    OUT_COD_RESPUESTA := 'OK';
+
+  EXCEPTION
+    WHEN OTHERS THEN
+      OUT_MENSAJE := 'MAL, ERROR EN EL AGENDAMIENTO DEL PROCESO DE ENVIO SAAP : ' ||
+                   REPLACE(REPLACE(DBMS_UTILITY.FORMAT_ERROR_STACK || '-' ||
+                                   DBMS_UTILITY.FORMAT_ERROR_BACKTRACE,
+                                   CHR(13),
+                                   ' '),
+                           CHR(10),
+                           ' ');
+      UTL_FILE.PUTF(G_ARCHIVO, '%s\n', OUT_MENSAJE);
+      UTL_FILE.FCLOSE(G_ARCHIVO);
+      OUT_COD_RESPUESTA := 'NO_OK';
+    
+  END AGENDA_ENVIO_SAAP_X_PAG;
+  
+   
+                                                                   
+END NOMP_PROCESO_NOMINA_PCK;
